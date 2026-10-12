@@ -124,8 +124,7 @@ function Upcoming({ mode, events, artists, favIds, city, setCity, reload, notify
 }
 
 function ArtistStrip({ mode, artists, notify, reload, goSettings }: { mode: 'mine' | 'all'; artists: Any[] | null; notify: (m: string, ok?: boolean) => void; reload: () => void; goSettings: () => void }) {
-  const [openMine, setOpen] = useState(true);
-  const open = mode === 'all' || openMine;
+  const [open, setOpen] = useState(mode === 'mine'); // All Artists starts collapsed
   const [q, setQ] = useState('');
   if (!artists) return null;
   const shown = (mode === 'mine' ? artists.filter(a => a.priority) : artists).filter(a => !q || a.name.toLowerCase().includes(q.toLowerCase()));
@@ -135,7 +134,7 @@ function ArtistStrip({ mode, artists, notify, reload, goSettings }: { mode: 'min
   return (
     <section className="glass p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <button onClick={() => mode === 'mine' && setOpen(!openMine)} className="text-[12px] uppercase tracking-[.2em] text-white/70 hover:text-white">{mode === 'mine' ? `My artists · ${shown.length}` : `All artists · ${artists.length}`} {mode === 'mine' && <span className="text-accent">{open ? '−' : '+'}</span>}</button>
+        <button onClick={() => setOpen(!open)} className="text-[12px] uppercase tracking-[.2em] text-white/70 hover:text-white">{mode === 'mine' ? `My artists · ${shown.length}` : `All artists · ${artists.length}`} <span className="text-accent">{open ? '▴' : '▾'}</span></button>
         <div className="flex items-center gap-2">
           {open && <input className="input max-w-[180px] py-1 text-[12px]" placeholder="Find artist" value={q} onChange={e => setQ(e.target.value)} />}
           <button className="btn py-1 text-[12px]" onClick={goSettings}>Add / sync Spotify</button>
