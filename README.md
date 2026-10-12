@@ -15,7 +15,8 @@ Live Show Radar watches legitimate public event sources and matches listings to 
 - ✅ Supabase Postgres (isolated project + `radar` schema), migrations, RLS
 - ✅ Gemini Flash key verified; schema-validated extraction from Google News RSS (with retry/backoff on overload)
 - ✅ Supabase pg_cron job every 5 minutes → `/api/monitor/run` (see docs for verification)
-- 🟡 Telegram, Spotify, Google Calendar: fully implemented, **awaiting your credentials/authorisation** (see [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md))
+- ✅ Telegram alerts verified live (test + real show alerts delivered)
+- 🟡 Google Calendar: OAuth client configured, awaiting owner sign-in · Spotify: needs a Premium developer account (see [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md))
 
 ## Quick start
 ```bash

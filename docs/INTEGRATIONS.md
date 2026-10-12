@@ -11,9 +11,9 @@
 | BookMyShow | ⛔ Unavailable | HTTP 403 to automated requests (even robots.txt). Not bypassed. |
 | Paytm Insider | ⛔ Unavailable | HTTP 502; listings moved to District. |
 | SkillBox | ⛔ Not implemented | Crawlable but no structured event data. |
-| Telegram Bot API | 🟡 Awaiting token + chat ID | `sendMessage` (HTML), `getMe`, `getUpdates` for chat discovery. |
-| Spotify Web API | 🟡 Awaiting app credentials | Scope `user-follow-read`; `GET /v1/me/following?type=artist` with cursor pagination (50/page). |
-| Google Calendar API | 🟡 Awaiting OAuth client | Scopes `calendar.events` + `calendar.calendarlist.readonly`; `events.import` with deterministic iCalUID. |
+| Telegram Bot API | ✅ Live — test message + 5 real show alerts delivered 2026-10-12 | `sendMessage` (HTML), `getMe`, `getUpdates` for chat discovery. |
+| Spotify Web API | 🟡 Blocked: developer account lacks Spotify Premium (Web API greyed out) | Scope `user-follow-read`; `GET /v1/me/following?type=artist` with cursor pagination (50/page). |
+| Google Calendar API | 🟡 OAuth client configured (Internal, Workspace); awaiting owner sign-in | Scopes `calendar.events` + `calendar.calendarlist.readonly`; `events.import` with deterministic iCalUID. |
 | Supabase Postgres + pg_cron + pg_net | ✅ Live | Migrations applied; cron job active every 5 minutes. |
 
 ## Coverage limitations
