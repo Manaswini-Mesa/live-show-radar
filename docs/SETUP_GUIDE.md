@@ -51,5 +51,5 @@ The dashboard's "Last scheduled run" shows the last run with `trigger = 'cron'`.
 3. **OAuth consent screen** (Google Auth Platform): User type **External**, app name Live Show Radar, your email as support/developer contact. Under **Audience → Test users** add your Google account. Under **Data access** add scopes `.../auth/calendar.events` and `.../auth/calendar.calendarlist.readonly`.
 4. **Clients → Create client → Web application**. Authorised redirect URI: `https://live-show-radar-chi.vercel.app/api/google/callback`. Create → copy Client ID and secret.
 5. Vercel env: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` → Redeploy.
-6. Dashboard → Settings → **Connect Google Calendar** → approve (you'll see an "unverified app" notice for test mode — continue). Optionally **Choose calendar**.
-7. Test: open any event → choose "I booked tickets" → **Confirm & add to Google Calendar**. Press it again → "Already in your calendar — no duplicate created".
+6. Dashboard → Settings → **Connect Google Calendar** → approve (you'll see an "unverified app" notice for test mode - continue). Optionally **Choose calendar**.
+7. Test: open any event → choose "I booked tickets" → **Confirm & add to Google Calendar**. Press it again → "Already in your calendar - no duplicate created".

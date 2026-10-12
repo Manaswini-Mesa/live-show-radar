@@ -83,7 +83,7 @@ export function istDay(iso: string | null): string {
 
 /**
  * Canonical identity of a show: one artist, one city, one local day.
- * Two listings only merge when all three agree — similar names alone never merge.
+ * Two listings only merge when all three agree - similar names alone never merge.
  */
 export function dedupeKey(artistId: string, ev: Pick<NormalizedEvent, 'city' | 'startAt'>): string {
   return `${artistId}|${nameKey(canonicalCity(ev.city) ?? 'unknown')}|${istDay(ev.startAt)}`;
@@ -160,7 +160,7 @@ export function formatAlert(p: {
     `<b>Ticket status:</b> ${esc(ticketLabel(p.ticketStatus))}`,
   ];
   if (p.earlyBird) lines.push(`<b>Early-bird:</b> ${esc(p.earlyBird)}`);
-  if (p.changes?.length) lines.push(`<b>What changed:</b> ${esc(p.changes.map(c => `${c.field}: ${c.oldValue ?? '—'} → ${c.newValue ?? '—'}`).join('; '))}`);
+  if (p.changes?.length) lines.push(`<b>What changed:</b> ${esc(p.changes.map(c => `${c.field}: ${c.oldValue ?? '-'} → ${c.newValue ?? '-'}`).join('; '))}`);
   lines.push(`<b>Last verified:</b> ${esc(fmtIST(p.lastVerified))}`, `<b>Source:</b> ${esc(p.source)}`);
   lines.push(`<b>${p.ticketStatus === 'on_sale' ? 'Direct booking link' : 'Official link'}:</b> ${p.link ? esc(p.link) : 'Not available yet'}`);
   lines.push(`<i>Why: ${esc(p.reason)}</i>`);

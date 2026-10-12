@@ -55,7 +55,7 @@ export async function telegramBotInfo(): Promise<{ ok: boolean; username?: strin
   return r.json.ok ? { ok: true, username: (r.json.result as { username: string }).username } : { ok: false, error: r.json.description };
 }
 
-/** Chats that recently messaged the bot — used to discover TELEGRAM_CHAT_ID. */
+/** Chats that recently messaged the bot - used to discover TELEGRAM_CHAT_ID. */
 export async function recentChats(): Promise<{ id: number; title: string; type: string }[]> {
   const r = await call('getUpdates', { limit: 50, allowed_updates: ['message'] });
   if (!r.json.ok) throw new Error(r.json.description ?? 'getUpdates failed');

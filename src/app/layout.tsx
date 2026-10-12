@@ -1,13 +1,13 @@
 import type { Metadata } from 'next';
-import { Fredoka, Righteous } from 'next/font/google';
+import { Cormorant_Garamond, Jost } from 'next/font/google';
 import './globals.css';
 
-const body = Fredoka({ subsets: ['latin'], variable: '--font-body', weight: ['400', '500', '600', '700'] });
-const display = Righteous({ subsets: ['latin'], variable: '--font-display', weight: '400' });
+const body = Jost({ subsets: ['latin'], variable: '--font-body', weight: ['200', '300', '400', '500'] });
+const display = Cormorant_Garamond({ subsets: ['latin'], variable: '--font-display', weight: ['300', '400'], style: ['normal', 'italic'] });
 
 export const metadata: Metadata = {
   title: 'KConcerts',
-  description: 'Never miss a show — concert & festival alerts across India for the artists you love.',
+  description: 'Never miss a show - concert & festival alerts across India for the artists you love.',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

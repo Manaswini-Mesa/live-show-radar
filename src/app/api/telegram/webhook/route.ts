@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   // A pending "tickets live" nudge is no longer needed once the user has answered.
   await db()`update radar.alerts set status = 'suppressed', last_error = ${`User marked ${interest}`} where event_id = ${ev.id} and kind = 'tickets_live' and status in ('pending','failed')`;
   await audit('interest_set', { event_id: ev.id, interest, via: 'telegram' });
-  await answerCallback(cq.id, interest === 'interested' ? '👍 Marked as interested' : '👎 Got it — no more reminders for this show');
+  await answerCallback(cq.id, interest === 'interested' ? '👍 Marked as interested' : '👎 Got it - no more reminders for this show');
   await editKeyboard(chatId, cq.message.message_id, interestKeyboard(ev.id, interest, ev.booking_url));
   return NextResponse.json({ ok: true });
 }

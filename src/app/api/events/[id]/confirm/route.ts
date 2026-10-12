@@ -43,7 +43,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     `Status: ${body.data.confirmation === 'booked' ? 'Tickets booked' : 'Planning to attend'}`,
     ev.booking_url ? `Booking: ${ev.booking_url}` : null,
     ev.official_url ? `Source: ${ev.official_url}` : null,
-    !ev.time_known ? 'Start time not verified — added as an all-day event.' : null,
+    !ev.time_known ? 'Start time not verified - added as an all-day event.' : null,
     'Added by Live Show Radar after explicit confirmation.',
   ].filter(Boolean).join('\n');
   try {

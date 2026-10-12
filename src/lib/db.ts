@@ -8,7 +8,7 @@ export function db(): postgres.Sql {
   if (!g.__radarSql) {
     const url = env.databaseUrl();
     if (!url) throw new Error('Database is not configured (DATABASE_URL / POSTGRES_URL missing)');
-    // prepare:false — required for the Supabase transaction pooler.
+    // prepare:false - required for the Supabase transaction pooler.
     g.__radarSql = postgres(url, { prepare: false, ssl: 'require', max: 3, idle_timeout: 20, connect_timeout: 10, onnotice: () => {} });
   }
   return g.__radarSql;

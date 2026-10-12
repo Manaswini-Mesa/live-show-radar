@@ -80,9 +80,9 @@ async function persist(sourceId: string, ev: NormalizedEvent, artists: WatchArti
         values (${eventId}, ${sourceId}, ${ev.ticketStatus}, ${ev.priceMin}, ${ev.currency}, ${ev.bookingUrl ?? ev.sourceUrl})
         on conflict (event_id, source_id, url) do update set availability = excluded.availability, price = excluded.price, observed_at = now()`;
 
-      // Notification rules — each at most once per show (unique idempotency keys):
-      //   1. new_show      — first time a show is announced
-      //   2. tickets_live  — tickets go on sale AND the user hasn't answered Interested / Not interested
+      // Notification rules - each at most once per show (unique idempotency keys):
+      //   1. new_show      - first time a show is announced
+      //   2. tickets_live  - tickets go on sale AND the user hasn't answered Interested / Not interested
       // Every other change is recorded in history but never notified.
       const alertable = ev.verification === 'verified_structured' || ev.confidence >= 0.7;
       if (!alertable) return;

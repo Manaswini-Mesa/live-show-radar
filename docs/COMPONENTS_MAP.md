@@ -11,7 +11,7 @@ flowchart TD
     UI[Browser]
   end
 
-  subgraph Vercel["Vercel — Next.js 16 app (live-show-radar-chi.vercel.app)"]
+  subgraph Vercel["Vercel - Next.js 16 app (live-show-radar-chi.vercel.app)"]
     DASH[Dashboard UI<br/>Overview · Events · Artists · Alerts · Sources · Settings]:::ok
     AUTH[Password session<br/>HMAC cookie]:::ok
     API[API routes<br/>/api/*]:::ok

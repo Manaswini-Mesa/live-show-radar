@@ -60,7 +60,7 @@ export function normalizeSchemaEvent(e: Json, sourceUrl: string): NormalizedEven
     officialUrl: url,
     externalId: url,
     sourceUrl,
-    excerpt: `${title} — ${str(loc?.name) ?? ''} ${startAt ?? ''}`.trim(),
+    excerpt: `${title} - ${str(loc?.name) ?? ''} ${startAt ?? ''}`.trim(),
     publishedAt: null,
     verification: 'verified_structured',
     confidence: 0.95,

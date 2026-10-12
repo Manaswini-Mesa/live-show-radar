@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { env } from './env';
 import type { RssItem } from './parsers';
 
-// Validated output schema. Anything uncertain must be null — never guessed.
+// Validated output schema. Anything uncertain must be null - never guessed.
 export const ExtractedSchema = z.object({
   items: z.array(z.object({
     index: z.number().int(),

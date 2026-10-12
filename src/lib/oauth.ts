@@ -60,7 +60,7 @@ export async function spotifyFollowedArtists(): Promise<SpotifyArtist[]> {
   for (let page = 0; url && page < 40; page++) {
     const res: Response = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
     if (res.status === 429) throw new Error('Spotify rate limit reached; try again shortly');
-    if (res.status === 403) throw new Error('Spotify returned 403 — is your account added to the app’s User Management allowlist?');
+    if (res.status === 403) throw new Error('Spotify returned 403 - is your account added to the app’s User Management allowlist?');
     if (!res.ok) throw new Error(`Spotify HTTP ${res.status}`);
     const j = await res.json();
     for (const a of j.artists.items) out.push({ id: a.id, name: a.name, url: a.external_urls?.spotify, image: a.images?.[a.images.length - 1]?.url ?? null, genres: a.genres ?? [] });
