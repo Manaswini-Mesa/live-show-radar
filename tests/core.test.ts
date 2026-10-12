@@ -104,3 +104,15 @@ describe('notification kinds', () => {
     expect(m).toContain('Date TBA');
   });
 });
+
+import { robotsAllows } from '../src/lib/robots';
+describe('robots.txt', () => {
+  const r = `User-agent: Googlebot\nDisallow: /\n\nUser-agent: *\nDisallow: /admin/\nDisallow: /*?\nAllow: /admin/public$\n`;
+  it('applies only the * group', () => { expect(robotsAllows(r, '/events')).toBe(true); });
+  it('honours disallow, wildcards and longest match', () => {
+    expect(robotsAllows(r, '/admin/x')).toBe(false);
+    expect(robotsAllows(r, '/search?q=1')).toBe(false);
+    expect(robotsAllows(r, '/admin/public')).toBe(true);
+  });
+  it('empty robots allows everything', () => { expect(robotsAllows('', '/anything')).toBe(true); });
+});

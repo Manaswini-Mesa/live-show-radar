@@ -267,7 +267,6 @@ function Settings({ notify, reloadEvents }: { notify: (m: string, ok?: boolean) 
         <div className="lg:col-span-3"><Artists notify={notify} spotify={s?.integrations?.spotify} onChange={() => { refresh(); reloadEvents(); }} /></div>
         <div className="space-y-5 lg:col-span-2">
           <Connections s={s} notify={notify} refresh={refresh} />
-          <Sources s={s} />
         </div>
       </div>
     </div>
@@ -362,24 +361,3 @@ function Connections({ s, notify, refresh }: { s: Any; notify: (m: string, ok?: 
   );
 }
 
-const FRIENDLY: Record<string, string> = { district: 'District', google_news: 'News announcements', official_pages: 'Official artist pages', ticketmaster: 'Ticketmaster', bandsintown: 'Bandsintown', bookmyshow: 'BookMyShow', insider: 'Paytm Insider', skillbox: 'SkillBox' };
-
-function Sources({ s }: { s: Any }) {
-  if (!s) return null;
-  return (
-    <section className="glass p-6">
-      <h2 className="font-display text-xl">📡 Where shows come from</h2>
-      <ul className="mt-3 space-y-2 text-sm">
-        {s.sources.map((x: Any) => {
-          const live = x.enabled && x.status === 'live';
-          return (
-            <li key={x.id} className="flex items-center justify-between gap-3">
-              <span className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${live ? 'bg-mint shadow-[0_0_10px_#8fb39b]' : x.enabled ? 'bg-accent' : 'bg-white/25'}`} />{FRIENDLY[x.id] ?? x.name}</span>
-              <span className="text-xs text-muted">{live ? `checked ${ago(x.last_success_at)}` : x.enabled ? 'warming up' : 'not connected'}</span>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
-  );
-}

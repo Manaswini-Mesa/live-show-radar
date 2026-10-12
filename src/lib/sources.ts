@@ -1,7 +1,8 @@
 import 'server-only';
 import type { NormalizedEvent } from './core';
-import { canonicalCity, isIndia, nameKey, INDIA_CITY_NAMES } from './core';
-import { extractJsonLd, findEvents, normalizeSchemaEvent, parseRss } from './parsers';
+import { canonicalCity, isIndia, matchArtists, nameKey, INDIA_CITY_NAMES } from './core';
+import { robotsAllows } from './robots';
+import { extractJsonLd, findEvents, normalizeSchemaEvent, parseRss, type RssItem } from './parsers';
 import { fetchText, mapLimit, sha } from './http';
 import { extractFromNews, GeminiError, type Extracted } from './gemini';
 import { db } from './db';
@@ -123,4 +124,83 @@ const officialPages: Adapter = async (_src, artists) => {
   return { items: items.filter(isIndia), fetched, notes };
 };
 
-export const ADAPTERS: Record<string, Adapter> = { district, google_news: googleNews, official_pages: officialPages };
+/* ───────────── Readers for public sites without an API (robots.txt always respected) ───────────── */
+
+const robotsCache = new Map<string, string>();
+async function politeFetch(url: string, init: Parameters<typeof fetchText>[1] = {}) {
+  const u = new URL(url);
+  if (!robotsCache.has(u.origin)) {
+    const txt = await fetchText(`${u.origin}/robots.txt`, { timeoutMs: 8000 }).then(r => r.text).catch(() => '');
+    robotsCache.set(u.origin, txt);
+  }
+  if (!robotsAllows(robotsCache.get(u.origin)!, u.pathname)) throw new Error(`robots.txt disallows ${u.host}${u.pathname}`);
+  return fetchText(url, init);
+}
+
+const titleCase = (s: string) => s.replace(/\b\w/g, c => c.toUpperCase());
+
+/**
+ * SkillBox: its pages are JavaScript-only, but robots.txt advertises public event sitemaps whose
+ * page names carry the artist, venue and city. Recently updated entries are matched to the
+ * watchlist; dates aren't in the sitemap, so these show as "Date TBA" with a link to the page.
+ */
+const skillbox: Adapter = async (src, artists) => {
+  const maxAgeDays = Number(src.config.max_age_days ?? 14);
+  const etag = src.cursor.etag as string | undefined;
+  const r = await politeFetch('https://www.skillboxes.com/media/sitemap/sitemap-ticket.xml', { timeoutMs: 20_000, headers: etag ? { 'if-none-match': etag } : {} });
+  if (r.status === 304) return { items: [], fetched: 0, cursor: { etag } };
+  const cutoff = Date.now() - maxAgeDays * 86400_000;
+  const entries = [...r.text.matchAll(/<url>\s*<loc>([^<]+)<\/loc>(?:\s*<lastmod>([^<]+)<\/lastmod>)?/g)]
+    .map(m => ({ loc: m[1].trim(), lastmod: m[2] ? Date.parse(m[2]) : NaN }))
+    .filter(e => Number.isFinite(e.lastmod) && e.lastmod > cutoff);
+  const watch = artists.map(a => ({ id: a.id, name: a.name, aliases: a.aliases }));
+  const items: NormalizedEvent[] = [];
+  for (const e of entries) {
+    const slug = decodeURIComponent(e.loc.split('/').filter(Boolean).pop() ?? '').replace(/-[a-z0-9]{6,10}$/i, '');
+    const words = slug.replace(/-/g, ' ');
+    const city = words.match(CITY_RE)?.[1] ?? null;
+    for (const { artist } of matchArtists(words, watch)) {
+      items.push({
+        title: titleCase(words), artistHint: artist.name, eventType: 'concert', city: canonicalCity(city), country: 'IN', venue: null,
+        startAt: null, endAt: null, timeKnown: false, ticketStatus: 'unknown', priceMin: null, currency: null, earlyBird: null, earlyBirdDeadline: null,
+        bookingUrl: e.loc, officialUrl: e.loc, externalId: e.loc, sourceUrl: e.loc, excerpt: `SkillBox listing: ${words}`,
+        publishedAt: new Date(e.lastmod).toISOString(), verification: 'unverified', confidence: 0.65,
+      });
+    }
+  }
+  return { items, fetched: entries.length, cursor: { etag: r.etag ?? undefined } };
+};
+
+/**
+ * Music press RSS (Rolling Stone India, Indian Express, The Hindu, News18, Mid-day, HT, Homegrown):
+ * every headline is checked against every watched artist with the same conservative rules as the
+ * news fallback - artist named + upcoming tour/concert wording + an Indian city or "India".
+ */
+const musicPress: Adapter = async (src, artists) => {
+  const feeds = (src.config.feeds as string[] | undefined) ?? [];
+  const cutoff = Date.now() - 30 * 86400_000;
+  const notes: string[] = [];
+  const all: RssItem[] = [];
+  const res = await mapLimit(feeds, 3, async f => parseRss((await politeFetch(f, { timeoutMs: 12_000 })).text));
+  res.forEach((r, i) => r.status === 'fulfilled' ? all.push(...r.value) : notes.push(`${new URL(feeds[i]).host}: ${(r.reason as Error).message}`));
+  if (feeds.length && res.every(r => r.status === 'rejected')) throw new Error(notes.join('; '));
+  const recent = all.filter(i => !i.pubDate || Date.parse(i.pubDate) > cutoff);
+  const keyed = recent.map(i => ({ i, k: ` ${nameKey(`${i.title} ${i.description}`)} ` }));
+  const items: NormalizedEvent[] = [];
+  for (const a of artists) {
+    const keys = [a.name, ...a.aliases].map(nameKey).filter(k => k.length >= 4);
+    const hits = keyed.filter(x => keys.some(k => x.k.includes(` ${k} `))).map(x => x.i);
+    for (const x of headlineFallback(a.name, hits)) {
+      const it = hits[x.index];
+      items.push({
+        title: x.event_name ?? `${a.name} live`, artistHint: a.name, eventType: x.event_type ?? 'concert', city: canonicalCity(x.city), country: 'IN',
+        venue: null, startAt: null, endAt: null, timeKnown: false, ticketStatus: 'announced', priceMin: null, currency: null, earlyBird: null, earlyBirdDeadline: null,
+        bookingUrl: null, officialUrl: it.link, externalId: it.link, sourceUrl: it.link, excerpt: it.title.slice(0, 200),
+        publishedAt: it.pubDate ? new Date(it.pubDate).toISOString() : null, verification: 'reported_news', confidence: 0.6,
+      });
+    }
+  }
+  return { items: items.filter(isIndia), fetched: recent.length, notes };
+};
+
+export const ADAPTERS: Record<string, Adapter> = { district, google_news: googleNews, official_pages: officialPages, skillbox, music_press: musicPress };
