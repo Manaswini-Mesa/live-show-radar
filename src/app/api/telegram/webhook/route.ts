@@ -24,6 +24,18 @@ export async function POST(req: NextRequest) {
   await db()`update radar.alerts set status = 'suppressed', last_error = ${`User marked ${interest}`} where event_id = ${ev.id} and kind = 'tickets_live' and status in ('pending','failed')`;
   await audit('interest_set', { event_id: ev.id, interest, via: 'telegram' });
   await answerCallback(cq.id, interest === 'interested' ? '👍 Marked as interested' : '👎 Got it - no more reminders for this show');
-  await editKeyboard(chatId, cq.message.message_id, interestKeyboard(ev.id, interest, ev.booking_url));
+  // Tick only this show's buttons; digests carry one row per show, so keep the other rows intact.
+  const current = cq.message?.reply_markup?.inline_keyboard as { text: string; callback_data?: string; url?: string }[][] | undefined;
+  if (current?.length) {
+    const strip = (t: string) => t.replace(/^✅ /, '');
+    const rows = current.map(row => row.map(b => {
+      if (b.callback_data === `i:${ev.id}`) return { ...b, text: interest === 'interested' ? `✅ ${strip(b.text)}` : strip(b.text) };
+      if (b.callback_data === `n:${ev.id}`) return { ...b, text: interest === 'not_interested' ? `✅ ${strip(b.text)}` : strip(b.text) };
+      return b;
+    }));
+    await editKeyboard(chatId, cq.message.message_id, { inline_keyboard: rows });
+  } else {
+    await editKeyboard(chatId, cq.message.message_id, interestKeyboard(ev.id, interest, ev.booking_url));
+  }
   return NextResponse.json({ ok: true });
 }

@@ -121,6 +121,51 @@ export async function deliverAlerts(opts: { ids?: string[]; limit?: number } = {
   return { attempted: claimed.length, delivered };
 }
 
+const DIGEST_MAX = 15; // shows per Telegram message (keeps under the 4096-char limit and keyboard size)
+const escHtml = (s: string) => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]!));
+
+/**
+ * Twice-daily digest: every pending new-show / tickets-live alert goes out in one message with
+ * Interested / Not interested buttons per show. Shows marked "not interested" are never sent.
+ */
+export async function sendDigest() {
+  const sql = db();
+  if (!env.telegramToken() || !env.telegramChatId()) return { attempted: 0, delivered: 0, skipped: 'Telegram not configured' };
+  // Never repeat anything the user turned down; tickets-live is only for unanswered shows.
+  await sql`update radar.alerts a set status = 'suppressed', last_error = 'User marked not interested'
+    from radar.events e where e.id = a.event_id and a.status in ('pending','failed') and e.interest = 'not_interested'`;
+  await sql`update radar.alerts a set status = 'suppressed', last_error = 'User already answered'
+    from radar.events e where e.id = a.event_id and a.status in ('pending','failed') and a.kind = 'tickets_live' and e.interest is not null`;
+  const ids = (await sql`update radar.alerts set status = 'sending' where id in (
+      select id from radar.alerts where status in ('pending','failed') and kind in ('new_show','tickets_live') and attempts < 6
+      order by created_at limit 60 for update skip locked) returning id`).map(r => r.id);
+  if (!ids.length) return { attempted: 0, delivered: 0 };
+  const rows = await sql`select a.id as alert_id, a.kind, e.id, e.title, e.city, e.venue, e.start_at, e.time_known, e.ticket_status, e.price_min, e.booking_url, e.official_url,
+      (select string_agg(ar.name, ' × ') from radar.event_artists ea join radar.artists ar on ar.id = ea.artist_id where ea.event_id = e.id) as artist
+    from radar.alerts a join radar.events e on e.id = a.event_id where a.id = any(${ids}) order by e.start_at nulls last`;
+  let delivered = 0;
+  for (let i = 0; i < rows.length; i += DIGEST_MAX) {
+    const chunk = rows.slice(i, i + DIGEST_MAX);
+    const lines = chunk.map((r, n) => {
+      const when = r.start_at ? new Date(r.start_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', ...(r.time_known ? { hour: 'numeric', minute: '2-digit' } : {}) }) : 'Date TBA';
+      const link = r.booking_url ?? r.official_url;
+      const tag = r.kind === 'tickets_live' ? ' 🎟 <i>tickets now live</i>' : '';
+      return `<b>${n + 1}. ${escHtml(r.artist ?? r.title)}</b>${tag}\n${escHtml(r.venue ?? 'Venue TBA')}, ${escHtml(r.city ?? '')} · ${escHtml(when)}${r.price_min ? ` · from ₹${Number(r.price_min).toLocaleString('en-IN')}` : ''}${link ? `\n<a href="${escHtml(link)}">${r.booking_url ? 'Book tickets' : 'Details'}</a>` : ''}`;
+    });
+    const head = `<b>🎤 KConcerts · ${rows.length} new update${rows.length > 1 ? 's' : ''}</b>${rows.length > DIGEST_MAX ? ` (part ${i / DIGEST_MAX + 1})` : ''}\n`;
+    const keyboard = { inline_keyboard: chunk.map((r, n) => [
+      { text: `👍 ${n + 1}. ${(r.artist ?? r.title).slice(0, 22)}`, callback_data: `i:${r.id}` },
+      { text: '👎 Not interested', callback_data: `n:${r.id}` },
+    ]) };
+    const res = await sendTelegram(`${head}\n${lines.join('\n\n')}`, undefined, keyboard);
+    const chunkIds = chunk.map(r => r.alert_id);
+    for (const id of chunkIds) await sql`insert into radar.alert_attempts (alert_id, ok, http_status, error) values (${id}, ${res.ok}, ${res.ok ? 200 : res.status}, ${res.ok ? null : res.error})`;
+    if (res.ok) { delivered += chunk.length; await sql`update radar.alerts set status = 'delivered', delivered_at = now(), attempts = attempts + 1, telegram_message_id = ${res.messageId}, last_error = null where id = any(${chunkIds})`; }
+    else await sql`update radar.alerts set status = 'failed', attempts = attempts + 1, last_error = ${res.error} where id = any(${chunkIds})`;
+  }
+  return { attempted: rows.length, delivered };
+}
+
 export async function runMonitor(trigger: 'cron' | 'manual', opts: { force?: boolean; sourceIds?: string[] } = {}) {
   const sql = db();
   const started = Date.now();
@@ -164,7 +209,7 @@ export async function runMonitor(trigger: 'cron' | 'manual', opts: { force?: boo
         summary.push({ source: s.id, status: 'failed', error: msg });
       }
     }
-    const delivery = await deliverAlerts();
+    const delivery = { queued: true, note: 'Alerts go out in the twice-daily Telegram digest' };
     const failed = summary.filter(x => x.status === 'failed').length;
     const ran = summary.filter(x => x.status !== 'skipped').length;
     const status = failed === 0 ? 'success' : failed === ran ? 'failed' : 'partial';

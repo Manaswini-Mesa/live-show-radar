@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Any = any;
-type View = 'upcoming' | 'bookings' | 'settings';
+type View = 'mine' | 'all' | 'bookings' | 'settings';
 
 async function api(path: string, init?: RequestInit) {
   const r = await fetch(path, { ...init, headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) } });
@@ -22,90 +22,135 @@ const TICKET: Record<string, [string, string]> = {
 };
 
 export default function Dashboard() {
-  const [view, setView] = useState<View>('upcoming');
+  const [view, setView] = useState<View>('mine');
   const [events, setEvents] = useState<Any[] | null>(null);
+  const [artists, setArtists] = useState<Any[] | null>(null);
+  const [city, setCity] = useState('Bengaluru');
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const notify = useCallback((msg: string, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 5000); }, []);
   const load = useCallback(() => api('/api/events').then(j => setEvents(j.events)).catch(e => notify(e.message, false)), [notify]);
+  const loadArtists = useCallback(() => api('/api/artists').then(j => setArtists(j.artists)).catch(() => setArtists([])), []);
 
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
     if (sp.get('view') === 'settings' || sp.get('tab') === 'settings') setView('settings');
     const n = sp.get('notice'); if (n) { notify(n, !/fail|invalid|cancel|not configured|error/i.test(n)); history.replaceState(null, '', '/'); }
-    load();
-    const t = setInterval(load, 60_000); // stay fresh while the 5-minute scanner adds shows
+    load(); loadArtists();
+    const t = setInterval(load, 60_000);
     return () => clearInterval(t);
-  }, [load, notify]);
+  }, [load, loadArtists, notify]);
 
   const bookings = (events ?? []).filter(e => e.confirmation);
+  const favIds = new Set((artists ?? []).filter(a => a.priority).map(a => a.id));
+  const reloadAll = () => { load(); loadArtists(); };
+  const tabs: [View, string][] = [['mine', 'My Artists'], ['all', 'All Artists'], ['bookings', `My Bookings${bookings.length ? ` · ${bookings.length}` : ''}`]];
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pb-20">
-      <header className="flex flex-wrap items-center justify-between gap-4 py-6">
-        <button onClick={() => setView('upcoming')} className="flex items-center gap-3">
-          <span className="grid h-12 w-12 place-items-center rounded-2xl border border-[#c9a96e]/40 bg-[#0d0d0d]"><span className="eq"><i /><i /><i /><i /></span></span>
+    <div className="mx-auto max-w-6xl px-4 pb-20 text-sm">
+      <header className="flex flex-wrap items-center justify-between gap-4 py-5">
+        <button onClick={() => setView('mine')} className="flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-xl border border-[#c9a96e]/40 bg-[#0d0d0d]"><span className="eq scale-90"><i /><i /><i /><i /></span></span>
           <span className="text-left">
-            <span className="font-display rainbow-text block text-3xl leading-none">KConcerts</span>
-            <span className="text-xs text-muted">your artists · live across India</span>
+            <span className="font-display rainbow-text block text-2xl leading-none">KConcerts</span>
+            <span className="text-[11px] text-muted">your artists · live across India</span>
           </span>
         </button>
-        <nav className="glass flex items-center gap-1 p-1.5">
-          {([['upcoming', '🎤 Upcoming concerts'], ['bookings', `🎟 My bookings${bookings.length ? ` · ${bookings.length}` : ''}`]] as const).map(([v, l]) => (
-            <button key={v} onClick={() => setView(v)} className={`rounded-full px-4 py-2 text-sm font-semibold transition ${view === v ? 'bg-accent text-[#111111] ' : 'text-white/80 hover:text-white'}`}>{l}</button>
+        <nav className="glass flex items-center gap-1 p-1">
+          {tabs.map(([v, l]) => (
+            <button key={v} onClick={() => setView(v)} className={`rounded-full px-3.5 py-1.5 text-[13px] font-normal tracking-wide transition ${view === v ? 'bg-accent text-[#111111]' : 'text-white/70 hover:text-white'}`}>{l}</button>
           ))}
-          <button onClick={() => setView('settings')} aria-label="Settings" className={`grid h-9 w-9 place-items-center rounded-full text-lg transition hover:rotate-45 ${view === 'settings' ? 'bg-accent text-[#111111]' : 'text-white/80'}`}>⚙</button>
+          <button onClick={() => setView('settings')} aria-label="Settings" className={`grid h-8 w-8 place-items-center rounded-full text-base transition hover:rotate-45 ${view === 'settings' ? 'bg-accent text-[#111111]' : 'text-white/70'}`}>⚙</button>
         </nav>
       </header>
 
-      {view === 'upcoming' && <Upcoming events={events} reload={load} notify={notify} goSettings={() => setView('settings')} />}
-      {view === 'bookings' && <Bookings events={bookings} loaded={!!events} reload={load} notify={notify} goUpcoming={() => setView('upcoming')} />}
-      {view === 'settings' && <Settings notify={notify} reloadEvents={load} />}
+      {(view === 'mine' || view === 'all') && (
+        <Upcoming key={view} mode={view} events={events} artists={artists} favIds={favIds} city={city} setCity={setCity} reload={reloadAll} notify={notify} goSettings={() => setView('settings')} />
+      )}
+      {view === 'bookings' && <Bookings events={bookings} loaded={!!events} reload={load} notify={notify} goUpcoming={() => setView('mine')} />}
+      {view === 'settings' && <Settings notify={notify} reloadEvents={reloadAll} />}
 
-      {toast && <div className={`fixed bottom-6 left-1/2 z-50 w-[min(92vw,520px)] -translate-x-1/2 rounded-2xl px-5 py-3 text-sm font-semibold shadow-2xl ${toast.ok ? 'bg-[#8fb39b] text-[#0f0f0f]' : 'bg-[#a8865a] text-white'}`} style={{ animation: 'pop .35s both' }}>{toast.msg}</div>}
+      {toast && <div className={`fixed bottom-6 left-1/2 z-50 w-[min(92vw,480px)] -translate-x-1/2 rounded-2xl px-5 py-3 text-[13px] shadow-2xl ${toast.ok ? 'bg-[#f4efe6] text-[#0f0f0f]' : 'bg-[#a8865a] text-white'}`} style={{ animation: 'pop .35s both' }}>{toast.msg}</div>}
     </div>
   );
 }
 
-function Upcoming({ events, reload, notify, goSettings }: { events: Any[] | null; reload: () => void; notify: (m: string, ok?: boolean) => void; goSettings: () => void }) {
-  const [city, setCity] = useState('');
+function Upcoming({ mode, events, artists, favIds, city, setCity, reload, notify, goSettings }: {
+  mode: 'mine' | 'all'; events: Any[] | null; artists: Any[] | null; favIds: Set<string>; city: string; setCity: (c: string) => void;
+  reload: () => void; notify: (m: string, ok?: boolean) => void; goSettings: () => void;
+}) {
   const [q, setQ] = useState('');
   const [showHidden, setShowHidden] = useState(false);
-  const cities = useMemo(() => [...new Set((events ?? []).map(e => e.city).filter(Boolean))].sort(), [events]);
+  const cities = useMemo(() => [...new Set(['Bengaluru', ...(events ?? []).map(e => e.city).filter(Boolean)])].sort(), [events]);
   if (!events) return <Loading />;
-  const all = events.filter(e => (!city || e.city === city) && (!q || `${e.title} ${e.artists.map((a: Any) => a.name).join(' ')}`.toLowerCase().includes(q.toLowerCase())));
+  const scoped = mode === 'mine' ? events.filter(e => e.artists.some((a: Any) => favIds.has(a.id))) : events;
+  const all = scoped.filter(e => (!city || e.city === city) && (!q || `${e.title} ${e.artists.map((a: Any) => a.name).join(' ')}`.toLowerCase().includes(q.toLowerCase())));
   const hidden = all.filter(e => e.interest === 'not_interested');
   const list = all.filter(e => e.interest !== 'not_interested');
+  const where = city ? `in ${city}` : 'across India';
   return (
-    <div className="space-y-6">
-      <section className="glass relative overflow-hidden p-6 sm:p-8">
-        <p className="text-sm font-semibold uppercase tracking-[.2em] text-accent">Coming up</p>
-        <h1 className="font-display mt-1 text-4xl sm:text-5xl">{list.length ? <>{list.length} show{list.length > 1 ? 's' : ''} for <span className="rainbow-text">your artists</span></> : <>Your stage is <span className="rainbow-text">waiting</span></>}</h1>
-        <p className="mt-2 max-w-xl text-muted">Fresh listings land here automatically - we check every few minutes and ping you on Telegram the moment something new drops.</p>
-        <div className="mt-5 flex flex-wrap gap-2">
-          <input className="input max-w-xs" placeholder="🔎 Search artist or show" value={q} onChange={e => setQ(e.target.value)} />
-          <button onClick={() => setCity('')} className={`chip text-sm ${!city ? 'bg-accent text-[#111111]' : 'bg-white/10'}`}>All cities</button>
-          {cities.map(c => <button key={c} onClick={() => setCity(c)} className={`chip text-sm ${city === c ? 'bg-accent text-[#111111]' : 'bg-white/10 hover:bg-white/20'}`}>📍 {c}</button>)}
+    <div className="space-y-5">
+      <section className="glass p-5 sm:p-6">
+        <p className="text-[11px] font-normal uppercase tracking-[.25em] text-accent">{mode === 'mine' ? 'My artists' : 'All artists'}</p>
+        <h1 className="font-display mt-1 text-2xl sm:text-3xl">{list.length ? <>{list.length} show{list.length > 1 ? 's' : ''} <span className="rainbow-text">{where}</span></> : <>Nothing scheduled <span className="rainbow-text">{where}</span></>}</h1>
+        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <input className="input max-w-[220px] py-1.5 text-[13px]" placeholder="Search artist or show" value={q} onChange={e => setQ(e.target.value)} />
+          <select value={city} onChange={e => setCity(e.target.value)} className="rounded-full border border-white/10 bg-[#141415] px-3 py-1.5 text-[12px] font-light text-white/75 outline-none focus:border-[#c9a96e]">
+            <option value="">All cities</option>
+            {cities.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
         </div>
       </section>
 
+      <ArtistStrip mode={mode} artists={artists} notify={notify} reload={reload} goSettings={goSettings} />
+
       {list.length === 0 ? (
-        <div className="glass p-10 text-center">
-          <p className="text-5xl">🎶</p>
-          <p className="font-display mt-3 text-2xl">No shows yet</p>
-          <p className="mx-auto mt-1 max-w-md text-muted">Add the artists you love and we’ll hunt down their gigs across India.</p>
-          <button className="btn-sun mt-4" onClick={goSettings}>➕ Add artists</button>
+        <div className="glass p-8 text-center">
+          <p className="font-display text-xl">No shows {where} yet</p>
+          <p className="mx-auto mt-1 max-w-md text-[13px] text-muted">{mode === 'mine' ? 'Star artists below (or sync Spotify) to build your list.' : 'Try “All cities”, or check back - we look for new shows every 30 minutes.'}</p>
+          {city && <button className="btn mt-4 text-[12px]" onClick={() => setCity('')}>Show all cities</button>}
         </div>
       ) : (
-        <div className="grid gap-5 md:grid-cols-2">{list.map((e, i) => <Ticket key={e.id} e={e} i={i} reload={reload} notify={notify} />)}</div>
+        <div className="grid gap-4 md:grid-cols-2">{list.map((e, i) => <Ticket key={e.id} e={e} i={i} reload={reload} notify={notify} />)}</div>
       )}
 
       {hidden.length > 0 && (
         <div className="text-center">
-          <button className="btn" onClick={() => setShowHidden(!showHidden)}>{showHidden ? 'Hide' : 'Show'} {hidden.length} not-interested show{hidden.length > 1 ? 's' : ''}</button>
-          {showHidden && <div className="mt-5 grid gap-5 text-left md:grid-cols-2">{hidden.map((e, i) => <Ticket key={e.id} e={e} i={i} reload={reload} notify={notify} />)}</div>}
+          <button className="btn text-[12px]" onClick={() => setShowHidden(!showHidden)}>{showHidden ? 'Hide' : 'Show'} {hidden.length} not-interested show{hidden.length > 1 ? 's' : ''}</button>
+          {showHidden && <div className="mt-4 grid gap-4 text-left md:grid-cols-2">{hidden.map((e, i) => <Ticket key={e.id} e={e} i={i} reload={reload} notify={notify} />)}</div>}
         </div>
       )}
     </div>
+  );
+}
+
+function ArtistStrip({ mode, artists, notify, reload, goSettings }: { mode: 'mine' | 'all'; artists: Any[] | null; notify: (m: string, ok?: boolean) => void; reload: () => void; goSettings: () => void }) {
+  const [open, setOpen] = useState(mode === 'mine');
+  const [q, setQ] = useState('');
+  if (!artists) return null;
+  const shown = (mode === 'mine' ? artists.filter(a => a.priority) : artists).filter(a => !q || a.name.toLowerCase().includes(q.toLowerCase()));
+  async function star(a: Any) {
+    try { await api(`/api/artists/${a.id}`, { method: 'PATCH', body: JSON.stringify({ priority: !a.priority }) }); notify(a.priority ? `${a.name} removed from My Artists` : `${a.name} added to My Artists`); reload(); } catch (e: Any) { notify(e.message, false); }
+  }
+  return (
+    <section className="glass p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <button onClick={() => setOpen(!open)} className="text-[12px] uppercase tracking-[.2em] text-white/70 hover:text-white">{mode === 'mine' ? `My artists · ${shown.length}` : `All artists · ${artists.length}`} <span className="text-accent">{open ? '−' : '+'}</span></button>
+        <div className="flex items-center gap-2">
+          {open && <input className="input max-w-[180px] py-1 text-[12px]" placeholder="Find artist" value={q} onChange={e => setQ(e.target.value)} />}
+          <button className="btn py-1 text-[12px]" onClick={goSettings}>Add / sync Spotify</button>
+        </div>
+      </div>
+      {open && (
+        <div className="mt-3 flex max-h-56 flex-wrap gap-1.5 overflow-y-auto">
+          {shown.length === 0 ? <p className="text-[12px] text-muted">{mode === 'mine' ? 'No favourites yet - open All Artists and tap ☆ to add some.' : 'No artists match.'}</p> : shown.map(a => (
+            <button key={a.id} onClick={() => star(a)} title={a.priority ? 'Remove from My Artists' : 'Add to My Artists'}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-light transition ${a.priority ? 'border-[#c9a96e]/60 text-[#e6d5b0]' : 'border-white/10 text-white/65 hover:border-white/30'}`}>
+              <span className={a.priority ? 'text-accent' : 'text-white/35'}>{a.priority ? '★' : '☆'}</span>{a.name}{a.event_count ? <span className="text-[10px] text-accent">{a.event_count}</span> : null}
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -138,9 +183,9 @@ function Ticket({ e, i, reload, notify, booking }: { e: Any; i: number; reload: 
       <div className={`stub ${g}`}>
         {e.start_at ? (<>
           <span className="text-xs font-bold uppercase tracking-widest opacity-90">{IST(e.start_at, { month: 'short' })}</span>
-          <span className="font-display text-5xl leading-none">{IST(e.start_at, { day: 'numeric' })}</span>
+          <span className="font-display text-4xl font-light leading-none">{IST(e.start_at, { day: 'numeric' })}</span>
           <span className="text-xs font-semibold opacity-90">{IST(e.start_at, { weekday: 'short' })}{e.time_known ? ` · ${IST(e.start_at, { hour: 'numeric', minute: '2-digit' })}` : ''}</span>
-        </>) : <span className="font-display text-2xl">Date<br />TBA</span>}
+        </>) : <span className="font-display text-xl">Date<br />TBA</span>}
       </div>
       <div className="min-w-0 flex-1 p-4 pl-6">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -149,9 +194,9 @@ function Ticket({ e, i, reload, notify, booking }: { e: Any; i: number; reload: 
           {e.interest === 'interested' && <span className="chip bg-[#c9a96e] text-[#111111]">💛 Interested</span>}
           {e.confirmation && <span className="chip bg-[#111111] text-white">{e.confirmation === 'booked' ? '✅ Booked' : '🙌 Going'}</span>}
         </div>
-        <h3 className="font-display mt-2 truncate text-2xl leading-tight">{artist}</h3>
-        <p className="line-clamp-1 text-sm font-medium text-[#111111]/80">{title}</p>
-        <p className="mt-1 line-clamp-1 text-sm text-[#111111]/70">📍 {e.venue ?? 'Venue TBA'}{e.city ? ` · ${e.city}` : ''}</p>
+        <h3 className="font-display mt-1.5 truncate text-xl leading-tight">{artist}</h3>
+        <p className="line-clamp-1 text-[13px] font-light text-[#111111]/75">{title}</p>
+        <p className="mt-1 line-clamp-1 text-[12px] font-light text-[#111111]/60">📍 {e.venue ?? 'Venue TBA'}{e.city ? ` · ${e.city}` : ''}</p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {e.price_min && <span className="font-display text-lg">₹{Number(e.price_min).toLocaleString('en-IN')}<span className="text-xs font-sans text-[#111111]/60"> onwards</span></span>}
           {(e.booking_url || e.official_url) && <a href={e.booking_url ?? e.official_url} target="_blank" rel="noopener noreferrer" className="tbtn border-transparent bg-[#111111] text-[#f4efe6]!">{e.booking_url ? 'Book now ↗' : 'Read more ↗'}</a>}
@@ -181,12 +226,12 @@ function Bookings({ events, loaded, reload, notify, goUpcoming }: { events: Any[
   return (
     <div className="space-y-6">
       <section className="glass p-6 sm:p-8">
-        <p className="text-sm font-semibold uppercase tracking-[.2em] text-accent">My bookings</p>
-        <h1 className="font-display mt-1 text-4xl sm:text-5xl">{events.length ? <>You’ve got <span className="rainbow-text">{events.length} night{events.length > 1 ? 's' : ''} out</span></> : <>No plans <span className="rainbow-text">yet</span></>}</h1>
+        <p className="text-[11px] uppercase tracking-[.25em] text-accent">My bookings</p>
+        <h1 className="font-display mt-1 text-2xl sm:text-3xl">{events.length ? <>You’ve got <span className="rainbow-text">{events.length} night{events.length > 1 ? 's' : ''} out</span></> : <>No plans <span className="rainbow-text">yet</span></>}</h1>
         <p className="mt-2 text-muted">Shows you’ve booked or said you’re going to. We add them to your Google Calendar - never without your say-so.</p>
       </section>
       {events.length === 0
-        ? <div className="glass p-10 text-center"><p className="text-5xl">🎟</p><p className="mt-3 text-muted">Tap “I booked” or “I’m going” on any upcoming show.</p><button className="btn-sun mt-4" onClick={goUpcoming}>See upcoming concerts</button></div>
+        ? <div className="glass p-10 text-center"><p className="mt-3 text-muted">Tap “I booked” or “I’m going” on any upcoming show.</p><button className="btn-sun mt-4" onClick={goUpcoming}>See upcoming concerts</button></div>
         : <div className="grid gap-5 md:grid-cols-2">{events.map((e, i) => <Ticket key={e.id} e={e} i={i} reload={reload} notify={notify} booking />)}</div>}
     </div>
   );
@@ -213,8 +258,8 @@ function Settings({ notify, reloadEvents }: { notify: (m: string, ok?: boolean) 
     <div className="space-y-5">
       <section className="glass flex flex-wrap items-center justify-between gap-4 p-6">
         <div>
-          <h1 className="font-display text-4xl">Settings</h1>
-          <p className="text-muted">Last checked for new shows {ago(s?.runs?.[0]?.started_at)} · we look again every 5 minutes</p>
+          <h1 className="font-display text-3xl">Settings</h1>
+          <p className="text-muted">Last checked for new shows {ago(s?.runs?.[0]?.started_at)} · we look every 30 minutes · Telegram digest at 9 am and 6 pm</p>
         </div>
         <button className="btn-sun" disabled={scanning} onClick={scan}>{scanning ? '🔭 Scanning…' : '🔭 Check for new shows now'}</button>
       </section>
@@ -259,7 +304,7 @@ function Artists({ notify, spotify, onChange }: { notify: (m: string, ok?: boole
   return (
     <section className="glass p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-2xl">🎤 My artists <span className="text-base text-muted">({list?.length ?? 0})</span></h2>
+        <h2 className="font-display text-xl">🎤 My artists <span className="text-base text-muted">({list?.length ?? 0})</span></h2>
         {spotify?.connected
           ? <button className="btn" disabled={busy} onClick={loadPreview}>🎧 {busy ? 'Loading…' : 'Sync from Spotify'}</button>
           : <a className={`btn ${spotify?.configured ? '' : 'pointer-events-none opacity-50'}`} href="/api/spotify/login">🎧 Connect Spotify</a>}
@@ -309,7 +354,7 @@ function Connections({ s, notify, refresh }: { s: Any; notify: (m: string, ok?: 
   );
   return (
     <section className="glass space-y-3 p-6">
-      <h2 className="font-display text-2xl">🔌 Connections</h2>
+      <h2 className="font-display text-xl">🔌 Connections</h2>
       <Row icon="💬" name="Telegram alerts" ok={!!i.telegram.lastSuccess} status={i.telegram.configured ? (i.telegram.lastSuccess ? `Working · last alert ${ago(i.telegram.lastSuccess)}` : 'Ready - send a test') : 'Not set up yet'}>
         {i.telegram.configured && <button className="btn" disabled={!!busy} onClick={() => run('tg', async () => { await api('/api/telegram', { method: 'POST' }); notify('📬 Test sent - check Telegram!'); })}>{busy === 'tg' ? '…' : 'Test'}</button>}
       </Row>
@@ -333,7 +378,7 @@ function Sources({ s }: { s: Any }) {
   if (!s) return null;
   return (
     <section className="glass p-6">
-      <h2 className="font-display text-2xl">📡 Where shows come from</h2>
+      <h2 className="font-display text-xl">📡 Where shows come from</h2>
       <ul className="mt-3 space-y-2 text-sm">
         {s.sources.map((x: Any) => {
           const live = x.enabled && x.status === 'live';

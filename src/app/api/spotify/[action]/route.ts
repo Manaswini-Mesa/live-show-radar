@@ -62,8 +62,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
     const chosen = followed.filter(a => body.data.ids.includes(a.id));
     let added = 0;
     for (const a of chosen) {
-      const r = await sql`insert into radar.artists (name, name_key, origin, spotify_id, spotify_url, image_url) values (${a.name}, ${nameKey(a.name)}, 'spotify', ${a.id}, ${a.url}, ${a.image})
-        on conflict (name_key) do update set spotify_id = coalesce(radar.artists.spotify_id, excluded.spotify_id), spotify_url = excluded.spotify_url, image_url = coalesce(radar.artists.image_url, excluded.image_url), following = true, updated_at = now()
+      const r = await sql`insert into radar.artists (name, name_key, origin, spotify_id, spotify_url, image_url, priority) values (${a.name}, ${nameKey(a.name)}, 'spotify', ${a.id}, ${a.url}, ${a.image}, true)
+        on conflict (name_key) do update set spotify_id = coalesce(radar.artists.spotify_id, excluded.spotify_id), spotify_url = excluded.spotify_url, image_url = coalesce(radar.artists.image_url, excluded.image_url), following = true, priority = true, updated_at = now()
         returning (xmax = 0) as inserted`;
       if (r[0]?.inserted) added++;
     }

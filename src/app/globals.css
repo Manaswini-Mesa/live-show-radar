@@ -30,6 +30,7 @@
   --font-display: var(--font-display), var(--font-body), sans-serif;
 }
 
+html { font-size: 15px; }
 html, body { background: var(--bg); color: var(--text); }
 body { font-family: var(--font-sans); font-weight: 300; letter-spacing: .01em; min-height: 100dvh; overflow-x: hidden; }
 
