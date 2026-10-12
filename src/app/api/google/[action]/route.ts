@@ -6,21 +6,21 @@ import { env } from '@/lib/env';
 import { exchangeCode, googleFetch, saveTokens, GOOGLE_SCOPES } from '@/lib/oauth';
 
 
-const back = (msg: string) => NextResponse.redirect(`${env.appUrl()}/?tab=settings&notice=${encodeURIComponent(msg)}`);
+const back = (msg: string) => NextResponse.redirect(`${env.appUrl()}/?view=settings&notice=${encodeURIComponent(msg)}`);
 
 // /api/google/login | callback | calendars (GET) ; /api/google/select | disconnect (POST)
 export async function GET(req: NextRequest, ctx: { params: Promise<{ action: string }> }) {
   const { action } = await ctx.params;
   const deny = requireSession(req);
   if (action === 'login') {
-    if (deny) return NextResponse.redirect(`${env.appUrl()}/login`);
+    if (deny) return NextResponse.redirect(`${env.appUrl()}/`);
     if (!env.googleId() || !env.googleSecret()) return back('Google Calendar is not configured: add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET');
     const u = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     u.search = new URLSearchParams({ client_id: env.googleId(), redirect_uri: env.googleRedirect(), response_type: 'code', scope: GOOGLE_SCOPES, access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true', state: makeState('google') }).toString();
     return NextResponse.redirect(u.toString());
   }
   if (action === 'callback') {
-    if (deny) return NextResponse.redirect(`${env.appUrl()}/login`);
+    if (deny) return NextResponse.redirect(`${env.appUrl()}/`);
     const sp = req.nextUrl.searchParams;
     if (!checkState('google', sp.get('state'))) return back('Google sign-in failed: invalid or expired state');
     if (sp.get('error')) return back(`Google sign-in cancelled: ${sp.get('error')}`);

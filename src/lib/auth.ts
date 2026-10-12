@@ -29,8 +29,13 @@ export function safeEqual(a: string, b: string): boolean {
 
 export const sessionCookie = (value: string) => ({ name: SESSION_COOKIE, value, httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' as const, path: '/', maxAge: MAX_AGE });
 
-/** Returns a 401 response if the request has no valid dashboard session. */
+/**
+ * The owner chose an open dashboard (no login). Set REQUIRE_LOGIN=true to turn the
+ * password gate back on; scheduler and Telegram webhook keep their own secrets regardless.
+ */
+export const loginRequired = () => process.env.REQUIRE_LOGIN === 'true';
 export function requireSession(req: NextRequest): NextResponse | null {
+  if (!loginRequired()) return null;
   return verifySession(req.cookies.get(SESSION_COOKIE)?.value) ? null : NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 }
 

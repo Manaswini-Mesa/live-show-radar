@@ -8,21 +8,21 @@ import { exchangeCode, saveTokens, spotifyFollowedArtists, SPOTIFY_SCOPES } from
 
 export const maxDuration = 60;
 
-const back = (msg: string) => NextResponse.redirect(`${env.appUrl()}/?tab=settings&notice=${encodeURIComponent(msg)}`);
+const back = (msg: string) => NextResponse.redirect(`${env.appUrl()}/?view=settings&notice=${encodeURIComponent(msg)}`);
 
 // /api/spotify/login | callback | preview (GET) ; /api/spotify/import | disconnect (POST)
 export async function GET(req: NextRequest, ctx: { params: Promise<{ action: string }> }) {
   const { action } = await ctx.params;
   const deny = requireSession(req);
   if (action === 'login') {
-    if (deny) return NextResponse.redirect(`${env.appUrl()}/login`);
+    if (deny) return NextResponse.redirect(`${env.appUrl()}/`);
     if (!env.spotifyId() || !env.spotifySecret()) return back('Spotify is not configured: add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET');
     const u = new URL('https://accounts.spotify.com/authorize');
     u.search = new URLSearchParams({ response_type: 'code', client_id: env.spotifyId(), scope: SPOTIFY_SCOPES, redirect_uri: env.spotifyRedirect(), state: makeState('spotify'), show_dialog: 'true' }).toString();
     return NextResponse.redirect(u.toString());
   }
   if (action === 'callback') {
-    if (deny) return NextResponse.redirect(`${env.appUrl()}/login`);
+    if (deny) return NextResponse.redirect(`${env.appUrl()}/`);
     const sp = req.nextUrl.searchParams;
     if (!checkState('spotify', sp.get('state'))) return back('Spotify sign-in failed: invalid or expired state');
     if (sp.get('error')) return back(`Spotify sign-in cancelled: ${sp.get('error')}`);
