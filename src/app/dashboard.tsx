@@ -218,7 +218,7 @@ function DateRangeDropdown({ value, onChange, showDays }: { value: DateSel | nul
       </button>
       {value && <button onClick={() => onChange(null)} className="ml-1 text-[12px] text-white/40 hover:text-white" aria-label="Clear dates">✕</button>}
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-2 w-[min(92vw,340px)] rounded-2xl border border-white/10 bg-[#141415] p-4 shadow-2xl" style={{ animation: 'pop .2s both' }}>
+        <div className="fixed inset-x-4 top-28 z-50 mx-auto max-w-[340px] rounded-2xl sm:absolute sm:inset-x-auto sm:left-0 sm:top-full sm:mt-2 sm:w-[340px] border border-white/10 bg-[#141415] p-4 shadow-2xl" style={{ animation: 'pop .2s both' }}>
           <div className="flex flex-wrap gap-1.5">
             <button onClick={() => { onChange(null); setOpen(false); setPick(null); }} className={`rounded-full border px-2.5 py-1 text-[11px] ${!value ? 'border-[#c9a96e] text-[#e6d5b0]' : 'border-white/10 text-white/65 hover:border-white/30'}`}>Any dates</button>
             {presets().map(([l, v]) => (
