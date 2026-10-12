@@ -96,3 +96,11 @@ describe('RSS parsing', () => {
     expect(parseRss(xml)).toEqual([{ title: 'Prateek Kuhad announces India tour', link: 'https://n/1', pubDate: 'Mon, 12 Oct 2026 07:00:00 GMT', source: 'Rolling Stone India', description: 'x' }]);
   });
 });
+
+describe('notification kinds', () => {
+  it('tickets-live alert has its own header', () => {
+    const m = formatAlert({ kind: 'tickets_live', artist: 'A', title: 'T', city: 'Pune', venue: 'V', startAt: null, timeKnown: false, ticketStatus: 'on_sale', earlyBird: null, lastVerified: '2026-10-12T00:00:00Z', source: 'District', link: 'https://x', reason: 'r' });
+    expect(m).toContain('TICKETS ARE LIVE');
+    expect(m).toContain('Date TBA');
+  });
+});

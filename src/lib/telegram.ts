@@ -1,4 +1,5 @@
 import 'server-only';
+import { createHmac } from 'node:crypto';
 import { env } from './env';
 
 type TgResult = { ok: true; messageId: number } | { ok: false; status: number; error: string };
@@ -16,9 +17,35 @@ async function call(method: string, body?: object): Promise<{ status: number; js
   } finally { clearTimeout(t); }
 }
 
-export async function sendTelegram(html: string, chatId = env.telegramChatId()): Promise<TgResult> {
+export type InlineKeyboard = { inline_keyboard: { text: string; callback_data?: string; url?: string }[][] };
+
+/** Interested / Not interested buttons for an event; the current choice is ticked. */
+export function interestKeyboard(eventId: string, current: string | null, bookingUrl?: string | null): InlineKeyboard {
+  const rows: InlineKeyboard['inline_keyboard'] = [[
+    { text: `${current === 'interested' ? '✅ ' : '👍 '}Interested`, callback_data: `i:${eventId}` },
+    { text: `${current === 'not_interested' ? '✅ ' : '👎 '}Not interested`, callback_data: `n:${eventId}` },
+  ]];
+  if (bookingUrl && /^https:\/\//.test(bookingUrl)) rows.push([{ text: '🎟 Open booking page', url: bookingUrl }]);
+  return { inline_keyboard: rows };
+}
+
+/** Secret Telegram echoes in X-Telegram-Bot-Api-Secret-Token; derived so no extra env var is needed. */
+export function webhookSecret(): string {
+  return createHmac('sha256', env.sessionSecret()).update('telegram-webhook').digest('hex').slice(0, 48);
+}
+
+export async function answerCallback(id: string, text: string) { await call('answerCallbackQuery', { callback_query_id: id, text }); }
+export async function editKeyboard(chatId: number | string, messageId: number, markup: InlineKeyboard) {
+  await call('editMessageReplyMarkup', { chat_id: chatId, message_id: messageId, reply_markup: markup });
+}
+export async function setWebhook(url: string) {
+  const r = await call('setWebhook', { url, secret_token: webhookSecret(), allowed_updates: ['callback_query'], drop_pending_updates: false });
+  return { ok: r.json.ok, description: r.json.description };
+}
+
+export async function sendTelegram(html: string, chatId = env.telegramChatId(), replyMarkup?: InlineKeyboard): Promise<TgResult> {
   if (!chatId) return { ok: false, status: 0, error: 'TELEGRAM_CHAT_ID not set' };
-  const r = await call('sendMessage', { chat_id: chatId, text: html, parse_mode: 'HTML', link_preview_options: { is_disabled: false } });
+  const r = await call('sendMessage', { chat_id: chatId, text: html, parse_mode: 'HTML', link_preview_options: { is_disabled: false }, ...(replyMarkup ? { reply_markup: replyMarkup } : {}) });
   if (r.json.ok) return { ok: true, messageId: (r.json.result as { message_id: number }).message_id };
   return { ok: false, status: r.status, error: r.json.description ?? 'Unknown Telegram error' };
 }

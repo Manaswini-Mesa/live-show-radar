@@ -146,12 +146,12 @@ export const ticketLabel = (s: string) => TICKET_LABEL[s] ?? s;
 const esc = (s: string) => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]!));
 
 export function formatAlert(p: {
-  kind: 'new_show' | 'update'; artist: string; title: string; city: string | null; venue: string | null;
+  kind: 'new_show' | 'update' | 'tickets_live'; artist: string; title: string; city: string | null; venue: string | null;
   startAt: string | Date | null; timeKnown: boolean; ticketStatus: string; earlyBird: string | null;
   lastVerified: string | Date; source: string; link: string | null; reason: string; changes?: Change[];
 }): string {
   const lines = [
-    `<b>${p.kind === 'new_show' ? '🎤 NEW SHOW DETECTED' : '🔔 SHOW UPDATE'}</b>`,
+    `<b>${p.kind === 'new_show' ? '🎤 NEW SHOW DETECTED' : p.kind === 'tickets_live' ? '🎟 TICKETS ARE LIVE' : '🔔 SHOW UPDATE'}</b>`,
     `<b>Artist:</b> ${esc(p.artist)}`,
     `<b>Event:</b> ${esc(p.title)}`,
     `<b>City:</b> ${esc(p.city ?? 'Unknown')}`,

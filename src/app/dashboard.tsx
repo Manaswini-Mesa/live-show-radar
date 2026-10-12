@@ -25,7 +25,7 @@ const STATUS: Record<string, [string, string]> = {
   live: ['Live', 'bg-accent/15 text-accent'], verified: ['Verified', 'bg-accent/15 text-accent'], success: ['Success', 'bg-accent/15 text-accent'], delivered: ['Delivered', 'bg-accent/15 text-accent'], created: ['Added', 'bg-accent/15 text-accent'],
   partial: ['Partial', 'bg-amber-400/15 text-amber-300'], pending: ['Pending', 'bg-white/5 text-muted'], running: ['Running', 'bg-sky-400/15 text-sky-300'], sending: ['Sending', 'bg-sky-400/15 text-sky-300'],
   awaiting_config: ['Awaiting config', 'bg-amber-400/15 text-amber-300'], configured: ['Configured · untested', 'bg-amber-400/15 text-amber-300'], connected: ['Connected', 'bg-accent/15 text-accent'],
-  unavailable: ['Unavailable', 'bg-white/5 text-muted'], disabled: ['Disabled', 'bg-white/5 text-muted'], skipped: ['Skipped', 'bg-white/5 text-muted'],
+  unavailable: ['Unavailable', 'bg-white/5 text-muted'], suppressed: ['Not needed', 'bg-white/5 text-muted'], disabled: ['Disabled', 'bg-white/5 text-muted'], skipped: ['Skipped', 'bg-white/5 text-muted'],
   error: ['Error', 'bg-rose-500/15 text-rose-300'], failed: ['Failed', 'bg-rose-500/15 text-rose-300'], not_configured: ['Not configured', 'bg-white/5 text-muted'],
 };
 const Pill = ({ s, map = STATUS }: { s: string; map?: Record<string, [string, string]> }) => { const [l, c] = map[s] ?? [s, 'bg-white/5 text-muted']; return <span className={`pill ${c}`}>{l}</span>; };
@@ -224,7 +224,7 @@ function Events({ openEvent }: { openEvent: (id: string) => void }) {
               {rows.map(e => (
                 <tr key={e.id} className="cursor-pointer hover:bg-white/[.02]" onClick={() => openEvent(e.id)}>
                   <td className="td whitespace-nowrap">{e.start_at ? ist(e.start_at, e.time_known) : 'TBA'}</td>
-                  <td className="td"><p className="font-medium">{e.title}</p><p className="text-xs text-muted">{e.artists.map((a: Any) => a.name).join(', ')}{e.change_count ? ` · ${e.change_count} change(s)` : ''}{e.is_synthetic ? ' · TEST RECORD' : ''}</p></td>
+                  <td className="td"><p className="font-medium">{e.title}</p><p className="text-xs text-muted">{e.artists.map((a: Any) => a.name).join(', ')}{e.change_count ? ` · ${e.change_count} change(s)` : ''}{e.interest ? (e.interest === 'interested' ? ' · 👍 interested' : ' · 👎 not interested') : ''}{e.is_synthetic ? ' · TEST RECORD' : ''}</p></td>
                   <td className="td"><p className={e.city === 'Bengaluru' ? 'text-accent' : ''}>{e.city ?? '—'}</p><p className="text-xs text-muted">{e.venue ?? 'Venue TBA'}</p></td>
                   <td className="td"><Pill s={e.ticket_status} map={TICKET} />{e.price_min && <p className="mt-1 text-xs text-muted">from {e.currency ?? ''} {Number(e.price_min).toLocaleString('en-IN')}</p>}{e.early_bird && <p className="mt-1 text-xs text-amber-300">Early-bird: {e.early_bird}</p>}</td>
                   <td className="td"><Pill s={e.verification} map={VERIF} /></td>
@@ -265,6 +265,13 @@ function EventDrawer({ id, close, notify }: { id: string; close: () => void; not
               <div className="mb-2 flex flex-wrap gap-2"><Pill s={e.ticket_status} map={TICKET} /><Pill s={e.verification} map={VERIF} />{e.is_synthetic && <span className="pill bg-rose-500/15 text-rose-300">Test record</span>}</div>
               <h2 className="text-xl font-semibold">{e.title}</h2>
               <p className="text-sm text-muted">{d.artists.map((a: Any) => a.name).join(', ')}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(['interested', 'not_interested'] as const).map(v => (
+                  <button key={v} className={`btn ${e.interest === v ? 'border-accent text-accent' : ''}`} onClick={async () => { try { await api(`/api/events/${id}/interest`, { method: 'POST', body: JSON.stringify({ interest: e.interest === v ? null : v }) }); load(); } catch (err: Any) { notify(err.message, false); } }}>
+                    {e.interest === v ? '✅ ' : ''}{v === 'interested' ? 'Interested' : 'Not interested'}
+                  </button>
+                ))}
+              </div>
             </div>
             <dl className="card space-y-1.5 p-4 text-sm">
               <Row k="Date & time" v={e.start_at ? `${ist(e.start_at, e.time_known)}${e.time_known ? ' IST' : ' (time TBA)'}` : 'Not announced'} />
@@ -411,7 +418,7 @@ function Alerts({ notify }: { notify: (m: string, ok?: boolean) => void }) {
           <li key={a.id} className="px-4 py-3">
             <div className="flex flex-wrap items-center gap-3">
               <Pill s={a.status} />
-              <span className="min-w-0 flex-1 truncate text-sm">{a.kind === 'test' ? 'Test message' : `${a.kind === 'new_show' ? 'New show' : 'Update'} · ${a.event_title}`}</span>
+              <span className="min-w-0 flex-1 truncate text-sm">{a.kind === 'test' ? 'Test message' : `${a.kind === 'new_show' ? 'New show' : a.kind === 'tickets_live' ? 'Tickets live' : 'Update'} · ${a.event_title}`}</span>
               <span className="text-xs text-muted">{a.attempts} attempt(s) · {a.delivered_at ? `delivered ${ago(a.delivered_at)}` : `created ${ago(a.created_at)}`}</span>
               <button className="text-xs text-accent" onClick={() => setOpen(open === a.id ? null : a.id)}>{open === a.id ? 'Hide' : 'Preview'}</button>
               {a.status === 'failed' && a.kind !== 'test' && <button className="btn" onClick={() => retry([a.id])}>Retry</button>}
