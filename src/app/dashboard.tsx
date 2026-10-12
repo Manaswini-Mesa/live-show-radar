@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Any = any;
@@ -80,25 +80,20 @@ function Upcoming({ mode, events, artists, favIds, city, setCity, reload, notify
 }) {
   const [q, setQ] = useState('');
   const [showHidden, setShowHidden] = useState(false);
-  const [range, setRange] = useState<Range>('any');
-  const [from, setFrom] = useState(dayKey(new Date()));
-  const [to, setTo] = useState(dayKey(new Date(Date.now() + 30 * 86400_000)));
-  const [layout, setLayout] = useState<'tickets' | 'calendar'>('tickets');
-  const [day, setDay] = useState<string | null>(null);
+  const [sel, setSel] = useState<DateSel | null>(null);
   const cities = useMemo(() => [...new Set(['Bengaluru', ...(events ?? []).map(e => e.city).filter(Boolean)])].sort(), [events]);
   if (!events) return <Loading />;
   const scoped = mode === 'mine' ? events.filter(e => e.artists.some((a: Any) => favIds.has(a.id))) : events;
-  const [lo, hi] = rangeBounds(range, from, to);
-  const inRange = (e: Any) => range === 'any' || (!!e.start_at && dayKey(e.start_at) >= lo && dayKey(e.start_at) <= hi);
-  const base = scoped.filter(e => (!city || e.city === city) && inRange(e) && (!q || `${e.title} ${e.artists.map((a: Any) => a.name).join(' ')}`.toLowerCase().includes(q.toLowerCase())));
-  const all = day ? base.filter(e => e.start_at && dayKey(e.start_at) === day) : base;
+  const inRange = (e: Any) => !sel || (!!e.start_at && dayKey(e.start_at) >= sel.from && dayKey(e.start_at) <= sel.to);
+  const cityQ = scoped.filter(e => (!city || e.city === city) && (!q || `${e.title} ${e.artists.map((a: Any) => a.name).join(' ')}`.toLowerCase().includes(q.toLowerCase())));
+  const showDays = new Set(cityQ.filter(e => e.start_at && e.interest !== 'not_interested').map(e => dayKey(e.start_at)));
+  const all = cityQ.filter(inRange);
   const hidden = all.filter(e => e.interest === 'not_interested');
   const list = all.filter(e => e.interest !== 'not_interested');
-  const where = `${city ? `in ${city}` : 'across India'}${day ? ` on ${new Date(day + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : range !== 'any' ? ` · ${RANGES.find(r => r[0] === range)![1].toLowerCase()}` : ''}`;
-  const pill = 'rounded-full border border-white/10 bg-[#141415] px-3 py-1.5 text-[12px] font-light text-white/75 outline-none focus:border-[#c9a96e]';
+  const where = `${city ? `in ${city}` : 'across India'}${sel ? ` · ${selLabel(sel).toLowerCase()}` : ''}`;
   return (
     <div className="space-y-5">
-      <section className="glass p-5 sm:p-6">
+      <section className="glass relative z-20 p-5 sm:p-6">
         <p className="text-[11px] font-normal uppercase tracking-[.25em] text-accent">{mode === 'mine' ? 'My artists' : 'All artists'}</p>
         <h1 className="font-display mt-1 text-2xl sm:text-3xl">{list.length ? <>{list.length} show{list.length > 1 ? 's' : ''} <span className="rainbow-text">{where}</span></> : <>Nothing scheduled <span className="rainbow-text">{where}</span></>}</h1>
         <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -107,27 +102,12 @@ function Upcoming({ mode, events, artists, favIds, city, setCity, reload, notify
             <option value="">All cities</option>
             {cities.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-          <select value={range} onChange={e => { setRange(e.target.value as Range); setDay(null); }} className={pill} aria-label="Time range">
-            {RANGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-          {range === 'custom' && (
-            <span className="flex items-center gap-1.5 text-[12px] text-white/60">
-              <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={`${pill} [color-scheme:dark]`} aria-label="From" />
-              to
-              <input type="date" value={to} min={from} onChange={e => setTo(e.target.value)} className={`${pill} [color-scheme:dark]`} aria-label="To" />
-            </span>
-          )}
-          <span className="ml-auto flex rounded-full border border-white/10 p-0.5">
-            {(['tickets', 'calendar'] as const).map(v => (
-              <button key={v} onClick={() => { setLayout(v); setDay(null); }} className={`rounded-full px-3 py-1 text-[12px] capitalize transition ${layout === v ? 'bg-accent text-[#111]' : 'text-white/65 hover:text-white'}`}>{v === 'tickets' ? 'List' : 'Calendar'}</button>
-            ))}
-          </span>
+          <DateRangeDropdown value={sel} onChange={setSel} showDays={showDays} />
         </div>
       </section>
 
       <ArtistStrip mode={mode} artists={artists} notify={notify} reload={reload} goSettings={goSettings} />
 
-      {layout === 'calendar' && <CalendarView events={base.filter(e => e.interest !== 'not_interested')} start={range === 'any' ? null : lo} day={day} onPick={setDay} />}
 
       {list.length === 0 ? (
         <div className="glass p-8 text-center">
@@ -180,68 +160,95 @@ function ArtistStrip({ mode, artists, notify, reload, goSettings }: { mode: 'min
   );
 }
 
-type Range = 'any' | 'week' | 'weekend' | 'month' | '3m' | 'custom';
-const RANGES: [Range, string][] = [['any', 'Any time'], ['week', 'Next 7 days'], ['weekend', 'This weekend'], ['month', 'Next 30 days'], ['3m', 'Next 3 months'], ['custom', 'Custom dates']];
+type DateSel = { from: string; to: string; preset?: string };
 
 /** YYYY-MM-DD in India time. */
 function dayKey(v: string | Date): string {
   return new Date(new Date(v).getTime() + 330 * 60_000).toISOString().slice(0, 10);
 }
+const plusDays = (n: number) => dayKey(new Date(Date.now() + n * 86400_000));
+const fmtDay = (k: string) => new Date(`${k}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+const selLabel = (s: DateSel) => s.preset ?? (s.from === s.to ? fmtDay(s.from) : `${fmtDay(s.from)} - ${fmtDay(s.to)}`);
 
-function rangeBounds(r: Range, from: string, to: string): [string, string] {
-  const today = new Date();
-  const plus = (d: number) => dayKey(new Date(today.getTime() + d * 86400_000));
-  if (r === 'week') return [plus(0), plus(7)];
-  if (r === 'month') return [plus(0), plus(30)];
-  if (r === '3m') return [plus(0), plus(92)];
-  if (r === 'weekend') {
-    // Friday to Sunday; if it's already the weekend, from today to Sunday.
-    const dow = new Date(today.getTime() + 330 * 60_000).getUTCDay(); // 0 Sun … 6 Sat
-    if (dow === 0) return [plus(0), plus(0)];
-    if (dow >= 5) return [plus(0), plus(7 - dow)];
-    return [plus(5 - dow), plus(7 - dow)];
-  }
-  if (r === 'custom') return [from, to < from ? from : to];
-  return ['0000-01-01', '9999-12-31'];
+function presets(): [string, DateSel][] {
+  const dow = new Date(Date.now() + 330 * 60_000).getUTCDay(); // 0 Sun … 6 Sat
+  const weekend: [number, number] = dow === 0 ? [0, 0] : dow >= 5 ? [0, 7 - dow] : [5 - dow, 7 - dow];
+  return [
+    ['Today', { from: plusDays(0), to: plusDays(0), preset: 'Today' }],
+    ['This weekend', { from: plusDays(weekend[0]), to: plusDays(weekend[1]), preset: 'This weekend' }],
+    ['Next 7 days', { from: plusDays(0), to: plusDays(7), preset: 'Next 7 days' }],
+    ['Next 30 days', { from: plusDays(0), to: plusDays(30), preset: 'Next 30 days' }],
+    ['Next 3 months', { from: plusDays(0), to: plusDays(92), preset: 'Next 3 months' }],
+  ];
 }
 
-function CalendarView({ events, start, day, onPick }: { events: Any[]; start: string | null; day: string | null; onPick: (d: string | null) => void }) {
-  const first = start ?? dayKey(new Date());
-  const [month, setMonth] = useState(first.slice(0, 7)); // YYYY-MM
-  const byDay = new Map<string, Any[]>();
-  for (const e of events) if (e.start_at) { const k = dayKey(e.start_at); byDay.set(k, [...(byDay.get(k) ?? []), e]); }
+/**
+ * One dropdown for dates: quick presets plus a month calendar. Tap a start day, then an end day
+ * (or the same day twice for a single date). Days with shows carry a gold dot.
+ */
+function DateRangeDropdown({ value, onChange, showDays }: { value: DateSel | null; onChange: (v: DateSel | null) => void; showDays: Set<string> }) {
+  const [open, setOpen] = useState(false);
+  const [month, setMonth] = useState((value?.from ?? dayKey(new Date())).slice(0, 7));
+  const [pick, setPick] = useState<string | null>(null); // first click of a custom range
+  const [hover, setHover] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setPick(null); } };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
   const [y, m] = month.split('-').map(Number);
-  const lead = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7; // Monday-first
+  const lead = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7;
   const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
   const cells = [...Array(lead).fill(null), ...Array.from({ length: days }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`)];
-  const shift = (n: number) => { const d = new Date(Date.UTC(y, m - 1 + n, 1)); setMonth(d.toISOString().slice(0, 7)); onPick(null); };
+  const shift = (n: number) => setMonth(new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 7));
   const today = dayKey(new Date());
-  const tba = events.filter(e => !e.start_at).length;
+  const lo = pick ? (hover && hover < pick ? hover : pick) : value?.from;
+  const hi = pick ? (hover && hover > pick ? hover : pick) : value?.to;
+  function choose(k: string) {
+    if (!pick) { setPick(k); return; }
+    const [from, to] = k < pick ? [k, pick] : [pick, k];
+    onChange({ from, to }); setPick(null); setOpen(false);
+  }
   return (
-    <section className="glass p-4 sm:p-5">
-      <div className="mb-3 flex items-center justify-between">
-        <button className="btn px-3 py-1 text-[12px]" onClick={() => shift(-1)} aria-label="Previous month">‹</button>
-        <p className="font-display text-xl">{new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</p>
-        <button className="btn px-3 py-1 text-[12px]" onClick={() => shift(1)} aria-label="Next month">›</button>
-      </div>
-      <div className="grid grid-cols-7 gap-1 text-center text-[10px] uppercase tracking-[.2em] text-white/40">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => <span key={d} className="py-1">{d}</span>)}</div>
-      <div className="grid grid-cols-7 gap-1">
-        {cells.map((k, i) => {
-          if (!k) return <span key={`x${i}`} />;
-          const evs = byDay.get(k) ?? [];
-          const sel = day === k;
-          return (
-            <button key={k} disabled={!evs.length} onClick={() => onPick(sel ? null : k)}
-              className={`flex min-h-[64px] flex-col items-start rounded-xl border p-1.5 text-left transition sm:min-h-[78px] ${sel ? 'border-[#c9a96e] bg-[#c9a96e]/15' : evs.length ? 'border-white/10 bg-white/[.04] hover:border-[#c9a96e]/60' : 'border-transparent opacity-40'} ${k < today ? 'opacity-30' : ''}`}>
-              <span className={`text-[11px] ${k === today ? 'rounded-full bg-accent px-1.5 text-[#111]' : 'text-white/70'}`}>{Number(k.slice(8))}</span>
-              {evs.slice(0, 2).map(e => <span key={e.id} className="mt-0.5 w-full truncate text-[10px] font-light text-[#e6d5b0]">{e.artists[0]?.name ?? e.title}</span>)}
-              {evs.length > 2 && <span className="text-[10px] text-white/45">+{evs.length - 2} more</span>}
-            </button>
-          );
-        })}
-      </div>
-      <p className="mt-3 text-[11px] text-muted">{day ? 'Showing shows on the selected day - tap it again to clear.' : 'Tap a date to see its shows.'}{tba ? ` ${tba} announced show${tba > 1 ? 's have' : ' has'} no date yet - see the list view.` : ''}</p>
-    </section>
+    <div ref={ref} className="relative">
+      <button onClick={() => setOpen(!open)} className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] font-light transition ${value ? 'border-[#c9a96e]/70 text-[#e6d5b0]' : 'border-white/10 bg-[#141415] text-white/75'}`}>
+        <span aria-hidden>📅</span>{value ? selLabel(value) : 'Any dates'}<span className="text-white/40">▾</span>
+      </button>
+      {value && <button onClick={() => onChange(null)} className="ml-1 text-[12px] text-white/40 hover:text-white" aria-label="Clear dates">✕</button>}
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-2 w-[min(92vw,340px)] rounded-2xl border border-white/10 bg-[#141415] p-4 shadow-2xl" style={{ animation: 'pop .2s both' }}>
+          <div className="flex flex-wrap gap-1.5">
+            <button onClick={() => { onChange(null); setOpen(false); setPick(null); }} className={`rounded-full border px-2.5 py-1 text-[11px] ${!value ? 'border-[#c9a96e] text-[#e6d5b0]' : 'border-white/10 text-white/65 hover:border-white/30'}`}>Any dates</button>
+            {presets().map(([l, v]) => (
+              <button key={l} onClick={() => { onChange(v); setOpen(false); setPick(null); }} className={`rounded-full border px-2.5 py-1 text-[11px] ${value?.preset === l ? 'border-[#c9a96e] text-[#e6d5b0]' : 'border-white/10 text-white/65 hover:border-white/30'}`}>{l}</button>
+            ))}
+          </div>
+          <div className="mt-4 flex items-center justify-between">
+            <button className="px-2 text-white/60 hover:text-white" onClick={() => shift(-1)} aria-label="Previous month">‹</button>
+            <p className="font-display text-lg">{new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</p>
+            <button className="px-2 text-white/60 hover:text-white" onClick={() => shift(1)} aria-label="Next month">›</button>
+          </div>
+          <div className="mt-2 grid grid-cols-7 text-center text-[10px] uppercase tracking-widest text-white/35">{['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => <span key={i} className="py-1">{d}</span>)}</div>
+          <div className="grid grid-cols-7 gap-y-0.5" onMouseLeave={() => setHover(null)}>
+            {cells.map((k, i) => {
+              if (!k) return <span key={`x${i}`} />;
+              const inSel = !!lo && !!hi && k >= lo && k <= hi;
+              const edge = k === lo || k === hi;
+              return (
+                <button key={k} disabled={k < today} onClick={() => choose(k)} onMouseEnter={() => setHover(k)}
+                  className={`relative mx-auto grid h-9 w-9 place-items-center rounded-full text-[12px] transition disabled:opacity-25 ${edge ? 'bg-accent text-[#111]' : inSel ? 'bg-[#c9a96e]/20 text-[#e6d5b0]' : 'text-white/75 hover:bg-white/10'} ${k === today && !edge ? 'ring-1 ring-white/30' : ''}`}>
+                  {Number(k.slice(8))}
+                  {showDays.has(k) && <span className={`absolute bottom-1 h-1 w-1 rounded-full ${edge ? 'bg-[#111]' : 'bg-accent'}`} />}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-[11px] text-white/45">{pick ? 'Now tap the end date (or the same day again).' : 'Tap a start date, then an end date. Gold dots mark days with shows.'}</p>
+        </div>
+      )}
+    </div>
   );
 }
 
