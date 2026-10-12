@@ -45,7 +45,7 @@ const googleNews: Adapter = async (src, artists) => {
   const notes: string[] = [];
   let fetched = 0;
   const cutoff = Date.now() - 45 * 86400_000;
-  const res = await mapLimit(batch, 2, async (a) => {
+  const res = await mapLimit(batch, 1, async (a) => {
     const q = encodeURIComponent(`"${a.name}" (concert OR tour OR tickets OR festival) India when:30d`);
     const { text } = await fetchText(`https://news.google.com/rss/search?q=${q}&hl=en-IN&gl=IN&ceid=IN:en`);
     const rss = parseRss(text).filter(i => !i.pubDate || Date.parse(i.pubDate) > cutoff).slice(0, 8);
