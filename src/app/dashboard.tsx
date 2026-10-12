@@ -106,11 +106,11 @@ function Upcoming({ mode, events, artists, favIds, city, setCity, reload, notify
       {list.length === 0 ? (
         <div className="glass p-8 text-center">
           <p className="font-display text-xl">No shows {where} yet</p>
-          <p className="mx-auto mt-1 max-w-md text-[13px] text-muted">{mode === 'mine' ? 'Star artists below (or sync Spotify) to build your list.' : 'Try “All cities”, or check back - we look for new shows every 30 minutes.'}</p>
+          <p className="mx-auto mt-1 max-w-md text-[13px] text-muted">{mode === 'mine' ? 'Connect Spotify in Settings, or star artists in All Artists.' : 'Try “All cities”, or check back - we look for new shows every 30 minutes.'}</p>
           {city && <button className="btn mt-4 text-[12px]" onClick={() => setCity('')}>Show all cities</button>}
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">{list.map((e, i) => <Ticket key={e.id} e={e} i={i} reload={reload} notify={notify} />)}</div>
+        <div className="grid gap-3.5 md:grid-cols-2 xl:grid-cols-3">{list.map((e, i) => <Ticket key={e.id} e={e} i={i} reload={reload} notify={notify} />)}</div>
       )}
 
       {hidden.length > 0 && (
@@ -124,7 +124,8 @@ function Upcoming({ mode, events, artists, favIds, city, setCity, reload, notify
 }
 
 function ArtistStrip({ mode, artists, notify, reload, goSettings }: { mode: 'mine' | 'all'; artists: Any[] | null; notify: (m: string, ok?: boolean) => void; reload: () => void; goSettings: () => void }) {
-  const [open, setOpen] = useState(mode === 'mine');
+  const [openMine, setOpen] = useState(true);
+  const open = mode === 'all' || openMine;
   const [q, setQ] = useState('');
   if (!artists) return null;
   const shown = (mode === 'mine' ? artists.filter(a => a.priority) : artists).filter(a => !q || a.name.toLowerCase().includes(q.toLowerCase()));
@@ -134,7 +135,7 @@ function ArtistStrip({ mode, artists, notify, reload, goSettings }: { mode: 'min
   return (
     <section className="glass p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <button onClick={() => setOpen(!open)} className="text-[12px] uppercase tracking-[.2em] text-white/70 hover:text-white">{mode === 'mine' ? `My artists · ${shown.length}` : `All artists · ${artists.length}`} <span className="text-accent">{open ? '−' : '+'}</span></button>
+        <button onClick={() => mode === 'mine' && setOpen(!openMine)} className="text-[12px] uppercase tracking-[.2em] text-white/70 hover:text-white">{mode === 'mine' ? `My artists · ${shown.length}` : `All artists · ${artists.length}`} {mode === 'mine' && <span className="text-accent">{open ? '−' : '+'}</span>}</button>
         <div className="flex items-center gap-2">
           {open && <input className="input max-w-[180px] py-1 text-[12px]" placeholder="Find artist" value={q} onChange={e => setQ(e.target.value)} />}
           <button className="btn py-1 text-[12px]" onClick={goSettings}>Add / sync Spotify</button>
@@ -183,18 +184,18 @@ function Ticket({ e, i, reload, notify, booking }: { e: Any; i: number; reload: 
       <div className={`stub ${g}`}>
         {e.start_at ? (<>
           <span className="text-xs font-bold uppercase tracking-widest opacity-90">{IST(e.start_at, { month: 'short' })}</span>
-          <span className="font-display text-4xl font-light leading-none">{IST(e.start_at, { day: 'numeric' })}</span>
+          <span className="font-display text-3xl font-light leading-none">{IST(e.start_at, { day: 'numeric' })}</span>
           <span className="text-xs font-semibold opacity-90">{IST(e.start_at, { weekday: 'short' })}{e.time_known ? ` · ${IST(e.start_at, { hour: 'numeric', minute: '2-digit' })}` : ''}</span>
         </>) : <span className="font-display text-xl">Date<br />TBA</span>}
       </div>
-      <div className="min-w-0 flex-1 p-4 pl-6">
+      <div className="min-w-0 flex-1 p-3.5 pl-5">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className={`chip ${cls}`}>{label}</span>
           {isNew && <span className="chip bg-[#a8865a] text-white">NEW</span>}
           {e.interest === 'interested' && <span className="chip bg-[#c9a96e] text-[#111111]">💛 Interested</span>}
           {e.confirmation && <span className="chip bg-[#111111] text-white">{e.confirmation === 'booked' ? '✅ Booked' : '🙌 Going'}</span>}
         </div>
-        <h3 className="font-display mt-1.5 truncate text-xl leading-tight">{artist}</h3>
+        <h3 className="font-display mt-1 truncate text-lg leading-tight">{artist}</h3>
         <p className="line-clamp-1 text-[13px] font-light text-[#111111]/75">{title}</p>
         <p className="mt-1 line-clamp-1 text-[12px] font-light text-[#111111]/60">📍 {e.venue ?? 'Venue TBA'}{e.city ? ` · ${e.city}` : ''}</p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -277,65 +278,55 @@ function Settings({ notify, reloadEvents }: { notify: (m: string, ok?: boolean) 
 function Artists({ notify, spotify, onChange }: { notify: (m: string, ok?: boolean) => void; spotify: Any; onChange: () => void }) {
   const [list, setList] = useState<Any[] | null>(null);
   const [name, setName] = useState('');
-  const [preview, setPreview] = useState<Any[] | null>(null);
-  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => api('/api/artists').then(j => setList(j.artists)).catch(e => notify(e.message, false)), [notify]);
   useEffect(() => { load(); }, [load]);
   async function add(e: React.FormEvent) {
     e.preventDefault(); if (!name.trim()) return;
-    try { await api('/api/artists', { method: 'POST', body: JSON.stringify({ name }) }); notify(`💖 ${name} added`); setName(''); load(); onChange(); } catch (err: Any) { notify(err.message, false); }
+    try { await api('/api/artists', { method: 'POST', body: JSON.stringify({ name, priority: true }) }); notify(`${name} added to My Artists`); setName(''); load(); onChange(); } catch (err: Any) { notify(err.message, false); }
   }
   async function remove(a: Any) {
-    if (!confirm(`Stop watching ${a.name}?`)) return;
+    if (!confirm(`Remove ${a.name} from the list?`)) return;
     try { await api(`/api/artists/${a.id}`, { method: 'DELETE' }); load(); onChange(); } catch (err: Any) { notify(err.message, false); }
   }
-  async function star(a: Any) { await api(`/api/artists/${a.id}`, { method: 'PATCH', body: JSON.stringify({ priority: !a.priority }) }).catch(() => {}); load(); }
-  async function loadPreview() {
+  async function star(a: Any) { await api(`/api/artists/${a.id}`, { method: 'PATCH', body: JSON.stringify({ priority: !a.priority }) }).catch(() => {}); load(); onChange(); }
+  async function syncNow() {
     setBusy(true);
-    try { const j = await api('/api/spotify/preview'); setPreview(j.artists); setSel(new Set(j.artists.filter((a: Any) => !a.alreadyWatched).map((a: Any) => a.id))); } catch (e: Any) { notify(e.message, false); }
+    try { const r = await api('/api/spotify/import', { method: 'POST', body: '{}' }); notify(`Spotify synced - ${r.fetched} followed artists in My Artists`); load(); onChange(); } catch (e: Any) { notify(e.message, false); }
     setBusy(false);
   }
-  async function doImport() {
-    setBusy(true);
-    try { const r = await api('/api/spotify/import', { method: 'POST', body: JSON.stringify({ ids: [...sel] }) }); notify(`🎧 Synced! ${r.added} new artist${r.added === 1 ? '' : 's'} added`); setPreview(null); load(); onChange(); } catch (e: Any) { notify(e.message, false); }
-    setBusy(false);
-  }
+  const mine = (list ?? []).filter(a => a.priority);
+  const rest = (list ?? []).filter(a => !a.priority && (!q || a.name.toLowerCase().includes(q.toLowerCase())));
+  const Chip = ({ a }: { a: Any }) => (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-light ${a.priority ? 'border-[#c9a96e]/60 text-[#e6d5b0]' : 'border-white/10 text-white/65'}`}>
+      <button onClick={() => star(a)} className={a.priority ? 'text-accent' : 'text-white/35 hover:text-accent'} title={a.priority ? 'Remove from My Artists' : 'Add to My Artists'}>{a.priority ? '★' : '☆'}</button>
+      {a.name}{a.origin === 'spotify' && <span className="text-[10px] text-[#8fb39b]">spotify</span>}
+      <button onClick={() => remove(a)} className="text-white/30 hover:text-white" title="Remove">✕</button>
+    </span>
+  );
   return (
-    <section className="glass p-6">
+    <section className="glass p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-xl">🎤 My artists <span className="text-base text-muted">({list?.length ?? 0})</span></h2>
+        <h2 className="font-display text-xl">Artists</h2>
         {spotify?.connected
-          ? <button className="btn" disabled={busy} onClick={loadPreview}>🎧 {busy ? 'Loading…' : 'Sync from Spotify'}</button>
-          : <a className={`btn ${spotify?.configured ? '' : 'pointer-events-none opacity-50'}`} href="/api/spotify/login">🎧 Connect Spotify</a>}
+          ? <button className="btn py-1 text-[12px]" disabled={busy} onClick={syncNow}>{busy ? 'Syncing…' : 'Sync Spotify now'}</button>
+          : <a className={`btn py-1 text-[12px] ${spotify?.configured ? '' : 'pointer-events-none opacity-50'}`} href="/api/spotify/login">Connect Spotify</a>}
       </div>
-      {spotify?.lastSync && <p className="mt-1 text-xs text-muted">Last Spotify sync {ago(spotify.lastSync.started_at)}</p>}
+      <p className="mt-1 text-[12px] text-muted">{spotify?.connected ? `Spotify syncs automatically every 6 hours${spotify.lastSync ? ` · last ${ago(spotify.lastSync.started_at)}` : ''}. Everyone you follow lands in My Artists.` : 'Connect Spotify and everyone you follow is added to My Artists automatically.'}</p>
       <form onSubmit={add} className="mt-4 flex gap-2">
-        <input className="input" placeholder="Add an artist - e.g. Prateek Kuhad" value={name} onChange={e => setName(e.target.value)} />
-        <button className="btn-sun shrink-0" disabled={!name.trim()}>Add</button>
+        <input className="input py-2 text-[13px]" placeholder="Add an artist" value={name} onChange={e => setName(e.target.value)} />
+        <button className="btn-sun shrink-0 py-2" disabled={!name.trim()}>Add</button>
       </form>
-      {preview ? (
-        <div className="mt-4">
-          <div className="mb-2 flex items-center justify-between"><p className="font-semibold">Pick who to follow ({sel.size} selected)</p><div className="flex gap-2"><button className="btn" onClick={() => setPreview(null)}>Cancel</button><button className="btn-sun" disabled={busy || !sel.size} onClick={doImport}>Add {sel.size}</button></div></div>
-          <div className="flex max-h-80 flex-wrap gap-2 overflow-y-auto">{preview.map(a => (
-            <label key={a.id} className={`chip cursor-pointer gap-2 py-1.5 text-sm ${a.alreadyWatched ? 'bg-white/5 text-white/40' : sel.has(a.id) ? 'bg-accent text-[#111111]' : 'bg-white/10'}`}>
-              <input type="checkbox" className="sr-only" disabled={a.alreadyWatched} checked={sel.has(a.id) || a.alreadyWatched} onChange={ev => { const n = new Set(sel); if (ev.target.checked) n.add(a.id); else n.delete(a.id); setSel(n); }} />
-              {a.image && <img src={a.image} alt="" className="h-5 w-5 rounded-full" />}{a.name}
-            </label>
-          ))}</div>
-        </div>
-      ) : (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {!list ? <p className="text-muted">Loading…</p> : list.length === 0 ? <p className="text-muted">No artists yet - add your first one above ✨</p> : list.map((a, i) => (
-            <span key={a.id} className={`chip gap-2 py-1.5 pl-1.5 text-sm text-white grad-${hash(a.name) % 5}`} style={{ animation: `pop .4s ${i * 25}ms both` }}>
-              {a.image_url ? <img src={a.image_url} alt="" className="h-6 w-6 rounded-full" /> : <span className="grid h-6 w-6 place-items-center rounded-full bg-white/25 text-xs">{a.name[0]}</span>}
-              {a.name}{a.event_count ? <span className="rounded-full bg-white/25 px-1.5 text-[10px]">{a.event_count}</span> : null}
-              <button title="Favourite" onClick={() => star(a)} className="opacity-90 hover:scale-125">{a.priority ? '⭐' : '☆'}</button>
-              <button title="Remove" onClick={() => remove(a)} className="opacity-70 hover:opacity-100">✕</button>
-            </span>
-          ))}
-        </div>
-      )}
+      <details open className="group mt-4 rounded-2xl border border-white/[.07] p-3">
+        <summary className="cursor-pointer list-none text-[12px] uppercase tracking-[.2em] text-white/70">My artists · {mine.length} <span className="text-accent group-open:hidden">+</span><span className="hidden text-accent group-open:inline">−</span></summary>
+        <div className="mt-3 flex max-h-64 flex-wrap gap-1.5 overflow-y-auto">{!list ? <p className="text-muted">Loading…</p> : mine.length ? mine.map(a => <Chip key={a.id} a={a} />) : <p className="text-[12px] text-muted">None yet - star artists below or connect Spotify.</p>}</div>
+      </details>
+      <details className="group mt-3 rounded-2xl border border-white/[.07] p-3">
+        <summary className="cursor-pointer list-none text-[12px] uppercase tracking-[.2em] text-white/70">All other artists · {(list ?? []).length - mine.length} <span className="text-accent group-open:hidden">+</span><span className="hidden text-accent group-open:inline">−</span></summary>
+        <input className="input mt-3 py-1.5 text-[12px]" placeholder="Find artist" value={q} onChange={e => setQ(e.target.value)} />
+        <div className="mt-3 flex max-h-72 flex-wrap gap-1.5 overflow-y-auto">{rest.map(a => <Chip key={a.id} a={a} />)}</div>
+      </details>
     </section>
   );
 }

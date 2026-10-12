@@ -1,9 +1,9 @@
 import 'server-only';
 import type { NormalizedEvent } from './core';
-import { canonicalCity, isIndia } from './core';
+import { canonicalCity, isIndia, nameKey, INDIA_CITY_NAMES } from './core';
 import { extractJsonLd, findEvents, normalizeSchemaEvent, parseRss } from './parsers';
 import { fetchText, mapLimit, sha } from './http';
-import { extractFromNews, GeminiError } from './gemini';
+import { extractFromNews, GeminiError, type Extracted } from './gemini';
 import { db } from './db';
 
 export type WatchArtist = { id: string; name: string; aliases: string[]; official_tour_url: string | null };
@@ -35,6 +35,29 @@ const district: Adapter = async (src) => {
   return { items: items.filter(isIndia), fetched, cursor: { etags: newEtags }, notes };
 };
 
+const TOUR_WORDS = /\b(india tour|tour|concert|live in|to perform|performing|gig|announces?|returns? to india|headline)\b/i;
+const PAST_WORDS = /\b(review|recap|crowd went|last night|was held|performed|relived|throwback|highlights)\b/i;
+const CITY_RE = new RegExp(`\\b(${INDIA_CITY_NAMES.join('|')})\\b`, 'i');
+
+/**
+ * Rule-based reading used when Gemini is unavailable. Only headlines that name the artist AND
+ * an upcoming-sounding tour/concert phrase count; dates are never guessed (always TBA).
+ */
+export function headlineFallback(artist: string, items: { title: string; description: string }[]): Extracted[] {
+  const k = nameKey(artist);
+  return items.flatMap((it, index) => {
+    const text = `${it.title} ${it.description}`;
+    if (!` ${nameKey(text)} `.includes(` ${k} `) || !TOUR_WORDS.test(it.title) || PAST_WORDS.test(it.title)) return [];
+    const city = it.title.match(CITY_RE)?.[1] ?? null;
+    if (!city && !/\bindia\b/i.test(it.title)) return [];
+    return [{
+      index, is_india_event_announcement: true, artist, event_name: `${artist}${/tour/i.test(it.title) ? ' - India tour' : ' live'}`,
+      event_type: /tour/i.test(it.title) ? 'tour' as const : 'concert' as const, city, country: 'IN', venue: null, start_date: null,
+      ticket_status: 'announced' as const, early_bird: null, evidence_excerpt: it.title.slice(0, 200), confidence: 0.6, uncertain_fields: ['start_date', 'venue'],
+    }];
+  });
+}
+
 /** Google News RSS per artist (rotating batch) → Gemini structured extraction. */
 const googleNews: Adapter = async (src, artists) => {
   if (!artists.length) return { items: [], fetched: 0, notes: ['No artists in watchlist'] };
@@ -45,7 +68,7 @@ const googleNews: Adapter = async (src, artists) => {
   const notes: string[] = [];
   let fetched = 0;
   const cutoff = Date.now() - 45 * 86400_000;
-  const res = await mapLimit(batch, 1, async (a) => {
+  const res = await mapLimit(batch, 2, async (a) => {
     const q = encodeURIComponent(`"${a.name}" (concert OR tour OR tickets OR festival) India when:30d`);
     const { text } = await fetchText(`https://news.google.com/rss/search?q=${q}&hl=en-IN&gl=IN&ceid=IN:en`);
     const rss = parseRss(text).filter(i => !i.pubDate || Date.parse(i.pubDate) > cutoff).slice(0, 8);
@@ -54,7 +77,12 @@ const googleNews: Adapter = async (src, artists) => {
     const hash = await sha(rss.map(i => i.link).join('|'));
     const [prev] = await db()`select content_hash from radar.source_documents where source_id = 'google_news' and doc_key = ${a.id}`;
     if (prev?.content_hash === hash) return; // unchanged → no repeated AI processing
-    const extracted = await extractFromNews(a.name, rss);
+    let extracted: Extracted[];
+    try { extracted = await extractFromNews(a.name, rss); }
+    catch (e) {
+      if (!(e instanceof GeminiError)) throw e;
+      extracted = headlineFallback(a.name, rss); // Gemini quota/overload → conservative rule-based reading
+    }
     for (const x of extracted) {
       const it = rss[x.index];
       if (!x.is_india_event_announcement || x.confidence < 0.6 || !it) continue;

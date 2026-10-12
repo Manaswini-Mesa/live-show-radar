@@ -5,6 +5,7 @@ import { ADAPTERS, type WatchArtist, type SourceRow } from './sources';
 import { interestKeyboard, sendTelegram } from './telegram';
 import { env } from './env';
 import { sha } from './http';
+import { syncSpotifyIfDue } from './spotifySync';
 
 const SOURCE_NAMES: Record<string, string> = { district: 'District', google_news: 'Google News (reported)', official_pages: 'Official artist page' };
 const RUN_BUDGET_MS = 50_000;
@@ -179,6 +180,7 @@ export async function runMonitor(trigger: 'cron' | 'manual', opts: { force?: boo
   }
   const summary: { source: string; status: string; fetched?: number; matched?: number; created?: number; changed?: number; error?: string; notes?: string[] }[] = [];
   try {
+    const spotifyNote = await syncSpotifyIfDue();
     const artists = await loadWatchlist();
     const sources = await sql<(SourceRow & { poll_interval_minutes: number; last_checked_at: Date | null; backoff_until: Date | null; consecutive_failures: number })[]>`
       select * from radar.event_sources where enabled order by (id = 'google_news'), id`;
@@ -213,7 +215,7 @@ export async function runMonitor(trigger: 'cron' | 'manual', opts: { force?: boo
     const failed = summary.filter(x => x.status === 'failed').length;
     const ran = summary.filter(x => x.status !== 'skipped').length;
     const status = failed === 0 ? 'success' : failed === ran ? 'failed' : 'partial';
-    await sql`update radar.monitor_runs set status = ${status}, finished_at = now(), summary = ${sql.json({ sources: summary, delivery, artists: artists.length, ms: Date.now() - started } as never)} where id = ${runId}`;
+    await sql`update radar.monitor_runs set status = ${status}, finished_at = now(), summary = ${sql.json({ sources: summary, delivery, spotify: spotifyNote, artists: artists.length, ms: Date.now() - started } as never)} where id = ${runId}`;
     return { runId, status, sources: summary, delivery };
   } catch (e) {
     await sql`update radar.monitor_runs set status = 'failed', finished_at = now(), error = ${(e as Error).message.slice(0, 500)}, summary = ${sql.json({ sources: summary } as never)} where id = ${runId}`;

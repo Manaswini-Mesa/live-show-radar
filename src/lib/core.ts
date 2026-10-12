@@ -58,6 +58,7 @@ export function matchArtists(text: string, artists: Artist[], hint?: string | nu
   return out;
 }
 
+export const INDIA_CITY_NAMES = ['Bengaluru', 'Bangalore', 'Mumbai', 'Delhi', 'New Delhi', 'Gurugram', 'Gurgaon', 'Noida', 'Hyderabad', 'Pune', 'Chennai', 'Kolkata', 'Goa', 'Ahmedabad', 'Jaipur', 'Chandigarh', 'Kochi', 'Lucknow', 'Indore', 'Shillong', 'Guwahati', 'Surat', 'Vadodara', 'Nagpur', 'Mysuru', 'Mysore', 'Coimbatore', 'Visakhapatnam', 'Bhubaneswar', 'Dehradun', 'Udaipur', 'Navi Mumbai', 'Thane'];
 const INDIA_CITIES = ['bengaluru', 'bangalore', 'mumbai', 'delhi', 'new delhi', 'gurugram', 'gurgaon', 'noida', 'hyderabad', 'pune', 'chennai', 'kolkata', 'goa', 'ahmedabad', 'jaipur', 'chandigarh', 'kochi', 'lucknow', 'indore', 'shillong', 'guwahati', 'surat', 'vadodara', 'nagpur', 'mysuru', 'mysore', 'thiruvananthapuram', 'coimbatore', 'visakhapatnam', 'bhubaneswar', 'dehradun', 'udaipur', 'navi mumbai', 'thane'];
 
 export function isIndia(ev: Pick<NormalizedEvent, 'country' | 'city'>): boolean {
