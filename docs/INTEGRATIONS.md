@@ -10,7 +10,9 @@
 | Bandsintown | 🟡 Awaiting approved app_id | Anonymous `app_id` → HTTP 403. |
 | BookMyShow | ⛔ Unavailable | HTTP 403 to automated requests (even robots.txt). Not bypassed. |
 | Paytm Insider | ⛔ Unavailable | HTTP 502; listings moved to District. |
-| SkillBox | ⛔ Not implemented | Crawlable but no structured event data. |
+| SkillBox | ✅ Live (public sitemap) | Pages are JavaScript-only; the public event sitemap listed in robots.txt is read instead. Matched listings show as Date TBA with a link to the page. Tribute/cover nights are filtered out. |
+| Music press RSS | ✅ Live | Rolling Stone India, Indian Express, The Hindu, News18, Mid-day, Hindustan Times and Homegrown feeds, checked against every artist. Reported announcements only. |
+| HighApe, Townscript, Sortmyscene, Songkick, Bandsintown pages | ⛔ Not read | JavaScript-only with no sitemap, or blocked to automated readers (403). No workaround attempted. |
 | Telegram Bot API | ✅ Live - test message + 5 real show alerts delivered 2026-10-12 | `sendMessage` (HTML), `getMe`, `getUpdates` for chat discovery. |
 | Spotify Web API | 🟡 Blocked: developer account lacks Spotify Premium (Web API greyed out) | Scope `user-follow-read`; `GET /v1/me/following?type=artist` with cursor pagination (50/page). |
 | Google Calendar API | 🟡 OAuth client configured (Internal, Workspace); awaiting owner sign-in | Scopes `calendar.events` + `calendar.calendarlist.readonly`; `events.import` with deterministic iCalUID. |
