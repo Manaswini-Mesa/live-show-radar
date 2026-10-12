@@ -1,6 +1,6 @@
 import 'server-only';
 import { db, audit } from './db';
-import { dedupeKey, detectChanges, formatAlert, matchArtists, type Change, type NormalizedEvent } from './core';
+import { dedupeKey, detectChanges, formatAlert, isTributeOrCover, matchArtists, type Change, type NormalizedEvent } from './core';
 import { ADAPTERS, type WatchArtist, type SourceRow } from './sources';
 import { interestKeyboard, sendTelegram } from './telegram';
 import { env } from './env';
@@ -20,6 +20,7 @@ type PersistStats = { matched: number; created: number; changed: number };
 
 async function persist(sourceId: string, ev: NormalizedEvent, artists: WatchArtist[], stats: PersistStats) {
   const sql = db();
+  if (isTributeOrCover(ev.title)) return; // tribute/cover nights are not the real artist
   const matches = matchArtists(`${ev.title} ${ev.artistHint ?? ''}`, artists, ev.artistHint);
   for (const { artist, reason } of matches) {
     stats.matched++;

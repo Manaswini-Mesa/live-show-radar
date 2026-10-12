@@ -61,6 +61,10 @@ export function matchArtists(text: string, artists: Artist[], hint?: string | nu
 export const INDIA_CITY_NAMES = ['Bengaluru', 'Bangalore', 'Mumbai', 'Delhi', 'New Delhi', 'Gurugram', 'Gurgaon', 'Noida', 'Hyderabad', 'Pune', 'Chennai', 'Kolkata', 'Goa', 'Ahmedabad', 'Jaipur', 'Chandigarh', 'Kochi', 'Lucknow', 'Indore', 'Shillong', 'Guwahati', 'Surat', 'Vadodara', 'Nagpur', 'Mysuru', 'Mysore', 'Coimbatore', 'Visakhapatnam', 'Bhubaneswar', 'Dehradun', 'Udaipur', 'Navi Mumbai', 'Thane'];
 const INDIA_CITIES = ['bengaluru', 'bangalore', 'mumbai', 'delhi', 'new delhi', 'gurugram', 'gurgaon', 'noida', 'hyderabad', 'pune', 'chennai', 'kolkata', 'goa', 'ahmedabad', 'jaipur', 'chandigarh', 'kochi', 'lucknow', 'indore', 'shillong', 'guwahati', 'surat', 'vadodara', 'nagpur', 'mysuru', 'mysore', 'thiruvananthapuram', 'coimbatore', 'visakhapatnam', 'bhubaneswar', 'dehradun', 'udaipur', 'navi mumbai', 'thane'];
 
+/** Tribute / cover / revival nights are not the artist performing - never treat them as the artist's show. */
+export const TRIBUTE_RE = /\b(tribute|tributes|revival|cover band|covers night|the [a-z0-9 ]+ experience|unplugged by|songs of|night of|vdj|dj night|karaoke|screening)\b/i;
+export const isTributeOrCover = (title: string) => TRIBUTE_RE.test(title);
+
 export function isIndia(ev: Pick<NormalizedEvent, 'country' | 'city'>): boolean {
   const c = (ev.country ?? '').trim().toLowerCase();
   if (c === 'in' || c === 'india' || c === 'ind') return true;

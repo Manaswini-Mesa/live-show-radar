@@ -116,3 +116,13 @@ describe('robots.txt', () => {
   });
   it('empty robots allows everything', () => { expect(robotsAllows('', '/anything')).toBe(true); });
 });
+
+import { isTributeOrCover } from '../src/lib/core';
+describe('tribute filter', () => {
+  it('flags tribute and cover nights', () => {
+    for (const t of ['Tribute To Arijit Singh Ft South Side Nirvana', 'The Iron Maiden Experience Ft Maiden Voyage', 'Jai Ho A R Rahman Revival Ft Trisha Vox Live', 'Dandiya Night Ft Vdj Shaan']) expect(isTributeOrCover(t)).toBe(true);
+  });
+  it('keeps real shows', () => {
+    for (const t of ['Seedhe Maut India Tour Delhi', 'Job Kurian Live', "Darshan Raval's Love Letters India Tour | Bengaluru"]) expect(isTributeOrCover(t)).toBe(false);
+  });
+});
