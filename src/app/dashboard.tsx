@@ -83,7 +83,7 @@ function Upcoming({ mode, events, artists, favIds, city, setCity, reload, notify
   const [sel, setSel] = useState<DateSel | null>(null);
   const cities = useMemo(() => [...new Set(['Bengaluru', ...(events ?? []).map(e => e.city).filter(Boolean)])].sort(), [events]);
   if (!events) return <Loading />;
-  const scoped = mode === 'mine' ? events.filter(e => e.is_synthetic || e.artists.some((a: Any) => favIds.has(a.id))) : events;
+  const scoped = mode === 'mine' ? events.filter(e => e.artists.some((a: Any) => favIds.has(a.id))) : events;
   const inRange = (e: Any) => !sel || (!!e.start_at && dayKey(e.start_at) >= sel.from && dayKey(e.start_at) <= sel.to);
   const cityQ = scoped.filter(e => (!city || e.city === city) && (!q || `${e.title} ${e.artists.map((a: Any) => a.name).join(' ')}`.toLowerCase().includes(q.toLowerCase())));
   const showDays = new Set(cityQ.filter(e => e.start_at && e.interest !== 'not_interested').map(e => dayKey(e.start_at)));
@@ -254,7 +254,7 @@ function DateRangeDropdown({ value, onChange, showDays }: { value: DateSel | nul
 
 function Ticket({ e, i, reload, notify, booking }: { e: Any; i: number; reload: () => void; notify: (m: string, ok?: boolean) => void; booking?: boolean }) {
   const [busy, setBusy] = useState('');
-  const artist = e.artists.map((a: Any) => a.name).join(' × ') || (e.is_synthetic ? 'KConcerts Test Artist' : 'Live');
+  const artist = e.artists.map((a: Any) => a.name).join(' × ') || 'Live';
   const g = `grad-${hash(artist) % 5}`;
   const isNew = Date.now() - new Date(e.first_seen_at).getTime() < 48 * 3600_000;
   const [label, cls] = TICKET[e.ticket_status] ?? TICKET.unknown;
@@ -288,7 +288,7 @@ function Ticket({ e, i, reload, notify, booking }: { e: Any; i: number; reload: 
       <div className="min-w-0 flex-1 p-3.5 pl-5">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className={`chip ${cls}`}>{label}</span>
-          {e.is_synthetic ? <span className="chip bg-[#111111] text-[#e6d5b0]">TEST</span> : isNew && <span className="chip bg-[#a8865a] text-white">NEW</span>}
+          {isNew && <span className="chip bg-[#a8865a] text-white">NEW</span>}
           {e.interest === 'interested' && <span className="chip bg-[#c9a96e] text-[#111111]">💛 Interested</span>}
           {e.confirmation && <span className="chip bg-[#111111] text-white">{e.confirmation === 'booked' ? '✅ Booked' : '🙌 Going'}</span>}
         </div>
@@ -367,7 +367,6 @@ function Settings({ notify, reloadEvents }: { notify: (m: string, ok?: boolean) 
           <Connections s={s} notify={notify} refresh={refresh} />
         </div>
       </div>
-      <TestLab notify={notify} reloadEvents={reloadEvents} />
     </div>
   );
 }
@@ -424,79 +423,6 @@ function Artists({ notify, spotify, onChange }: { notify: (m: string, ok?: boole
         <input className="input mt-3 py-1.5 text-[12px]" placeholder="Find artist" value={q} onChange={e => setQ(e.target.value)} />
         <div className="mt-3 flex max-h-72 flex-wrap gap-1.5 overflow-y-auto">{rest.map(a => <Chip key={a.id} a={a} />)}</div>
       </details>
-    </section>
-  );
-}
-
-/* ───────────────────────── Test the workflow ───────────────────────── */
-
-function TestLab({ notify, reloadEvents }: { notify: (m: string, ok?: boolean) => void; reloadEvents: () => void }) {
-  const [st, setSt] = useState<Any>(null);
-  const [busy, setBusy] = useState('');
-  const [email, setEmail] = useState('');
-  const [choice, setChoice] = useState<'booked' | 'attending'>('booked');
-  const load = useCallback(() => api('/api/test/status').then(setSt).catch(() => {}), []);
-  useEffect(() => { load(); const t = setInterval(load, 4000); return () => clearInterval(t); }, [load]); // picks up Telegram button taps
-  const run = async (k: string, path: string, body?: object, ok?: (r: Any) => string) => {
-    setBusy(k);
-    try { const r = await api(`/api/test/${path}`, { method: 'POST', body: JSON.stringify(body ?? {}) }); if (ok) notify(ok(r)); reloadEvents(); }
-    catch (e: Any) { notify(e.message, false); }
-    setBusy(''); load();
-  };
-  const show = st?.show;
-  const steps: { n: number; title: string; done: boolean; detail: React.ReactNode; action?: React.ReactNode }[] = [
-    {
-      n: 1, title: 'Create a sample show', done: !!show,
-      detail: show ? `“${show.title}” · ${new Date(show.start_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} · Bengaluru. It appears in All Artists with a TEST tag.` : 'Adds one clearly-labelled test show. Real shows are never touched.',
-      action: !show && <button className="btn-sun py-1.5 text-[12px]" disabled={!!busy} onClick={() => run('create', 'create', {}, () => 'Sample show created')}>{busy === 'create' ? 'Creating…' : 'Create'}</button>,
-    },
-    {
-      n: 2, title: 'Send the Telegram alert', done: st?.alert?.status === 'delivered',
-      detail: !st?.ready?.telegram ? 'Telegram is not set up.' : st?.alert?.status === 'delivered' ? `Delivered ${ago(st.alert.delivered_at)} - check @KConcerts_bot.` : st?.alert?.last_error ?? 'Sends the alert now (real alerts wait for the 9 am / 6 pm digest).',
-      action: show && st?.ready?.telegram && <button className="btn py-1.5 text-[12px]" disabled={!!busy} onClick={() => run('alert', 'alert', {}, () => 'Test alert sent - open Telegram')}>{busy === 'alert' ? 'Sending…' : st?.alert ? 'Send again' : 'Send'}</button>,
-    },
-    {
-      n: 3, title: 'Tap Interested or Not interested', done: !!show?.interest,
-      detail: show?.interest ? `Recorded “${show.interest === 'interested' ? 'Interested' : 'Not interested'}” ${ago(show.interest_at)}.` : 'Tap 👍 or 👎 under the Telegram message (or on the ticket in All Artists). This updates by itself.',
-    },
-    {
-      n: 4, title: 'Book it into Google Calendar', done: st?.calendar?.status === 'created',
-      detail: st?.calendar?.status === 'created'
-        ? <>Added to your calendar{st.invitee ? <> and an invite was emailed to <b className="font-normal text-[#e6d5b0]">{st.invitee}</b></> : ''}. {st.calendar.url && <a className="text-accent underline" href={st.calendar.url} target="_blank" rel="noopener noreferrer">Open event ↗</a>}</>
-        : !st?.ready?.google ? 'Google Calendar is not connected.' : st?.calendar?.error ?? 'Confirms the booking and creates the calendar event. Optionally invite one more person by email.',
-      action: show && st?.ready?.google && st?.calendar?.status !== 'created' && (
-        <div className="mt-2 flex w-full flex-wrap items-center gap-2">
-          <select value={choice} onChange={e => setChoice(e.target.value as 'booked' | 'attending')} className="rounded-full border border-white/10 bg-[#141415] px-3 py-1.5 text-[12px] text-white/75 outline-none">
-            <option value="booked">I booked</option><option value="attending">I’m going</option>
-          </select>
-          <input className="input max-w-[240px] py-1.5 text-[12px]" type="email" placeholder="Extra email to invite (optional)" value={email} onChange={e => setEmail(e.target.value)} />
-          <button className="btn-sun py-1.5 text-[12px]" disabled={!!busy} onClick={() => run('book', 'book', { confirmation: choice, email: email.trim() }, r => r.invited ? `Booked - invite sent to ${r.invited}` : 'Booked into Google Calendar')}>{busy === 'book' ? 'Booking…' : 'Confirm booking'}</button>
-        </div>
-      ),
-    },
-  ];
-  return (
-    <section className="glass p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="font-display text-xl">Test the workflow</h2>
-          <p className="text-[12px] text-muted">A repeatable dry run with a sample show: alert → response → booking → calendar invite.</p>
-        </div>
-        {show && <button className="btn py-1 text-[12px]" disabled={!!busy} onClick={() => { if (confirm('Reset the test? This removes the sample show and its calendar event (cancelling any invite).')) run('reset', 'reset', {}, () => 'Test reset - ready to run again'); }}>{busy === 'reset' ? 'Resetting…' : '↺ Reset test'}</button>}
-      </div>
-      <ol className="mt-4 space-y-3">
-        {steps.map(s => (
-          <li key={s.n} className="flex gap-3 rounded-2xl border border-white/[.07] p-3">
-            <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] ${s.done ? 'bg-accent text-[#111]' : 'border border-white/20 text-white/60'}`}>{s.done ? '✓' : s.n}</span>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[13px]">{s.title}</p>{s.action && s.n !== 4 && <span className="shrink-0">{s.action}</span>}</div>
-              <p className="mt-0.5 text-[12px] font-light text-muted">{s.detail}</p>
-              {s.n === 4 && s.action}
-            </div>
-          </li>
-        ))}
-      </ol>
-      {st?.calendar?.status === 'created' && <p className="mt-3 text-[12px] text-[#8fb39b]">All steps done ✓ - press “Reset test” to run it again.</p>}
     </section>
   );
 }
