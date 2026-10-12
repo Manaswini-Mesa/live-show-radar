@@ -80,13 +80,22 @@ function Upcoming({ mode, events, artists, favIds, city, setCity, reload, notify
 }) {
   const [q, setQ] = useState('');
   const [showHidden, setShowHidden] = useState(false);
+  const [range, setRange] = useState<Range>('any');
+  const [from, setFrom] = useState(dayKey(new Date()));
+  const [to, setTo] = useState(dayKey(new Date(Date.now() + 30 * 86400_000)));
+  const [layout, setLayout] = useState<'tickets' | 'calendar'>('tickets');
+  const [day, setDay] = useState<string | null>(null);
   const cities = useMemo(() => [...new Set(['Bengaluru', ...(events ?? []).map(e => e.city).filter(Boolean)])].sort(), [events]);
   if (!events) return <Loading />;
   const scoped = mode === 'mine' ? events.filter(e => e.artists.some((a: Any) => favIds.has(a.id))) : events;
-  const all = scoped.filter(e => (!city || e.city === city) && (!q || `${e.title} ${e.artists.map((a: Any) => a.name).join(' ')}`.toLowerCase().includes(q.toLowerCase())));
+  const [lo, hi] = rangeBounds(range, from, to);
+  const inRange = (e: Any) => range === 'any' || (!!e.start_at && dayKey(e.start_at) >= lo && dayKey(e.start_at) <= hi);
+  const base = scoped.filter(e => (!city || e.city === city) && inRange(e) && (!q || `${e.title} ${e.artists.map((a: Any) => a.name).join(' ')}`.toLowerCase().includes(q.toLowerCase())));
+  const all = day ? base.filter(e => e.start_at && dayKey(e.start_at) === day) : base;
   const hidden = all.filter(e => e.interest === 'not_interested');
   const list = all.filter(e => e.interest !== 'not_interested');
-  const where = city ? `in ${city}` : 'across India';
+  const where = `${city ? `in ${city}` : 'across India'}${day ? ` on ${new Date(day + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : range !== 'any' ? ` · ${RANGES.find(r => r[0] === range)![1].toLowerCase()}` : ''}`;
+  const pill = 'rounded-full border border-white/10 bg-[#141415] px-3 py-1.5 text-[12px] font-light text-white/75 outline-none focus:border-[#c9a96e]';
   return (
     <div className="space-y-5">
       <section className="glass p-5 sm:p-6">
@@ -98,10 +107,27 @@ function Upcoming({ mode, events, artists, favIds, city, setCity, reload, notify
             <option value="">All cities</option>
             {cities.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
+          <select value={range} onChange={e => { setRange(e.target.value as Range); setDay(null); }} className={pill} aria-label="Time range">
+            {RANGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          {range === 'custom' && (
+            <span className="flex items-center gap-1.5 text-[12px] text-white/60">
+              <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={`${pill} [color-scheme:dark]`} aria-label="From" />
+              to
+              <input type="date" value={to} min={from} onChange={e => setTo(e.target.value)} className={`${pill} [color-scheme:dark]`} aria-label="To" />
+            </span>
+          )}
+          <span className="ml-auto flex rounded-full border border-white/10 p-0.5">
+            {(['tickets', 'calendar'] as const).map(v => (
+              <button key={v} onClick={() => { setLayout(v); setDay(null); }} className={`rounded-full px-3 py-1 text-[12px] capitalize transition ${layout === v ? 'bg-accent text-[#111]' : 'text-white/65 hover:text-white'}`}>{v === 'tickets' ? 'List' : 'Calendar'}</button>
+            ))}
+          </span>
         </div>
       </section>
 
       <ArtistStrip mode={mode} artists={artists} notify={notify} reload={reload} goSettings={goSettings} />
+
+      {layout === 'calendar' && <CalendarView events={base.filter(e => e.interest !== 'not_interested')} start={range === 'any' ? null : lo} day={day} onPick={setDay} />}
 
       {list.length === 0 ? (
         <div className="glass p-8 text-center">
@@ -150,6 +176,71 @@ function ArtistStrip({ mode, artists, notify, reload, goSettings }: { mode: 'min
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+type Range = 'any' | 'week' | 'weekend' | 'month' | '3m' | 'custom';
+const RANGES: [Range, string][] = [['any', 'Any time'], ['week', 'Next 7 days'], ['weekend', 'This weekend'], ['month', 'Next 30 days'], ['3m', 'Next 3 months'], ['custom', 'Custom dates']];
+
+/** YYYY-MM-DD in India time. */
+function dayKey(v: string | Date): string {
+  return new Date(new Date(v).getTime() + 330 * 60_000).toISOString().slice(0, 10);
+}
+
+function rangeBounds(r: Range, from: string, to: string): [string, string] {
+  const today = new Date();
+  const plus = (d: number) => dayKey(new Date(today.getTime() + d * 86400_000));
+  if (r === 'week') return [plus(0), plus(7)];
+  if (r === 'month') return [plus(0), plus(30)];
+  if (r === '3m') return [plus(0), plus(92)];
+  if (r === 'weekend') {
+    // Friday to Sunday; if it's already the weekend, from today to Sunday.
+    const dow = new Date(today.getTime() + 330 * 60_000).getUTCDay(); // 0 Sun … 6 Sat
+    if (dow === 0) return [plus(0), plus(0)];
+    if (dow >= 5) return [plus(0), plus(7 - dow)];
+    return [plus(5 - dow), plus(7 - dow)];
+  }
+  if (r === 'custom') return [from, to < from ? from : to];
+  return ['0000-01-01', '9999-12-31'];
+}
+
+function CalendarView({ events, start, day, onPick }: { events: Any[]; start: string | null; day: string | null; onPick: (d: string | null) => void }) {
+  const first = start ?? dayKey(new Date());
+  const [month, setMonth] = useState(first.slice(0, 7)); // YYYY-MM
+  const byDay = new Map<string, Any[]>();
+  for (const e of events) if (e.start_at) { const k = dayKey(e.start_at); byDay.set(k, [...(byDay.get(k) ?? []), e]); }
+  const [y, m] = month.split('-').map(Number);
+  const lead = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7; // Monday-first
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const cells = [...Array(lead).fill(null), ...Array.from({ length: days }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`)];
+  const shift = (n: number) => { const d = new Date(Date.UTC(y, m - 1 + n, 1)); setMonth(d.toISOString().slice(0, 7)); onPick(null); };
+  const today = dayKey(new Date());
+  const tba = events.filter(e => !e.start_at).length;
+  return (
+    <section className="glass p-4 sm:p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <button className="btn px-3 py-1 text-[12px]" onClick={() => shift(-1)} aria-label="Previous month">‹</button>
+        <p className="font-display text-xl">{new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</p>
+        <button className="btn px-3 py-1 text-[12px]" onClick={() => shift(1)} aria-label="Next month">›</button>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center text-[10px] uppercase tracking-[.2em] text-white/40">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => <span key={d} className="py-1">{d}</span>)}</div>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((k, i) => {
+          if (!k) return <span key={`x${i}`} />;
+          const evs = byDay.get(k) ?? [];
+          const sel = day === k;
+          return (
+            <button key={k} disabled={!evs.length} onClick={() => onPick(sel ? null : k)}
+              className={`flex min-h-[64px] flex-col items-start rounded-xl border p-1.5 text-left transition sm:min-h-[78px] ${sel ? 'border-[#c9a96e] bg-[#c9a96e]/15' : evs.length ? 'border-white/10 bg-white/[.04] hover:border-[#c9a96e]/60' : 'border-transparent opacity-40'} ${k < today ? 'opacity-30' : ''}`}>
+              <span className={`text-[11px] ${k === today ? 'rounded-full bg-accent px-1.5 text-[#111]' : 'text-white/70'}`}>{Number(k.slice(8))}</span>
+              {evs.slice(0, 2).map(e => <span key={e.id} className="mt-0.5 w-full truncate text-[10px] font-light text-[#e6d5b0]">{e.artists[0]?.name ?? e.title}</span>)}
+              {evs.length > 2 && <span className="text-[10px] text-white/45">+{evs.length - 2} more</span>}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-3 text-[11px] text-muted">{day ? 'Showing shows on the selected day - tap it again to clear.' : 'Tap a date to see its shows.'}{tba ? ` ${tba} announced show${tba > 1 ? 's have' : ' has'} no date yet - see the list view.` : ''}</p>
     </section>
   );
 }
