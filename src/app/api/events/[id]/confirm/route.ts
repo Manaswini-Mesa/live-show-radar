@@ -23,7 +23,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   // Record the confirmation (idempotent per event) and lock it for this request.
   const [link] = await sql`insert into radar.calendar_links (event_id, confirmation) values (${id.data}, ${body.data.confirmation})
     on conflict (event_id) do update set confirmation = excluded.confirmation returning *`;
-  if (link.status === 'created' && link.google_event_id) return NextResponse.json({ ok: true, duplicate: true, calendar: link });
+  // Already added? Only skip if it's still on the calendar - if it was deleted there, add it again.
+  if (link.status === 'created' && link.google_event_id && link.calendar_id) {
+    const still = await googleFetch(`/calendars/${encodeURIComponent(link.calendar_id)}/events/${encodeURIComponent(link.google_event_id)}`).catch(() => null);
+    if (still && still.status !== 'cancelled') return NextResponse.json({ ok: true, duplicate: true, calendar: link });
+  }
 
   const conn = await getConnection('google');
   if (!conn?.access_token) {
@@ -50,7 +54,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     // Deterministic iCalUID guards against duplicates even if our DB write were lost.
     const created = await googleFetch(`/calendars/${encodeURIComponent(calendarId)}/events/import`, {
       method: 'POST',
-      body: JSON.stringify({ iCalUID: `lsr-${ev.id}@live-show-radar`, summary: `🎤 ${ev.title}`, location: [ev.venue, ev.city, 'India'].filter(Boolean).join(', '), description, ...timing, source: ev.booking_url ? { title: 'Booking', url: ev.booking_url } : undefined }),
+      body: JSON.stringify({ iCalUID: `lsr-${ev.id}@live-show-radar`, status: 'confirmed', summary: `🎤 ${ev.title}`, location: [ev.venue, ev.city, 'India'].filter(Boolean).join(', '), description, ...timing, source: ev.booking_url ? { title: 'Booking', url: ev.booking_url } : undefined }),
     });
     const [saved] = await sql`update radar.calendar_links set status = 'created', calendar_id = ${calendarId}, google_event_id = ${created.id}, google_event_url = ${created.htmlLink ?? null}, error = null where id = ${link.id} returning *`;
     await audit('calendar_event_created', { event_id: ev.id });

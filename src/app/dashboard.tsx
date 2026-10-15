@@ -274,7 +274,7 @@ function Ticket({ e, i, reload, notify, booking }: { e: Any; i: number; reload: 
     setBusy(c);
     try {
       const r = await api(`/api/events/${e.id}/confirm`, { method: 'POST', body: JSON.stringify({ confirmation: c, explicit: true }) });
-      notify(r.duplicate ? 'Already in your Google Calendar 📅' : '🎉 Added to My bookings + Google Calendar!');
+      notify(r.duplicate ? 'Already in your Google Calendar 📅' : '📅 Added to your Google Calendar');
     } catch (err: Any) {
       if (err.status === 409) notify('🎉 Saved to My bookings! Connect Google Calendar in Settings to sync it.');
       else notify(err.message, false);
@@ -310,13 +310,12 @@ function Ticket({ e, i, reload, notify, booking }: { e: Any; i: number; reload: 
             const label = e.booking_url ? 'Book now ↗' : e.official_url ? 'Read more ↗' : 'See listing ↗';
             return <a href={href} target="_blank" rel="noopener noreferrer" className="tbtn border-transparent bg-[#111111] text-[#f4efe6]!">{label}</a>;
           })()}
-          {e.listing_url && e.listing_url !== (e.booking_url ?? e.official_url) && <a href={e.listing_url} target="_blank" rel="noopener noreferrer" className="tbtn">All listings ↗</a>}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t-2 border-dashed border-[#111111]/10 pt-3">
           <button className={`tbtn ${e.interest === 'interested' ? 'border-[#c9a96e] bg-[#c9a96e]' : ''}`} disabled={!!busy} onClick={() => interest('interested')}>👍 Interested</button>
           <button className={`tbtn ${e.interest === 'not_interested' ? 'border-[#a8865a] bg-[#a8865a]/20' : ''}`} disabled={!!busy} onClick={() => interest('not_interested')}>👎 Not interested</button>
           {e.start_at && (e.calendar_status === 'created'
-            ? <span className="tbtn border-[#8fb39b] bg-[#8fb39b]/20">📅 In calendar</span>
+            ? <button className="tbtn border-[#8fb39b] bg-[#8fb39b]/20" disabled={!!busy} title="In your Google Calendar - tap to add it again if you deleted it there" onClick={() => going(e.confirmation ?? 'attending')}>{busy ? '…' : '📅 In calendar ✓'}</button>
             : <button className="tbtn border-[#5a5a5a]/50" disabled={!!busy} title="Add this show to your Google Calendar" onClick={() => going(e.confirmation ?? 'attending')}>{busy === 'attending' || busy === 'booked' ? '…' : '📅 Add to calendar'}</button>)}
           {!e.start_at && (
             <button onClick={toggleNotify} disabled={!!busy} aria-pressed={!!e.notify_me} title={e.notify_me ? 'You’ll get a Telegram message when the date or tickets are announced - tap to stop' : 'Notify me on Telegram when the date or tickets are announced'}
