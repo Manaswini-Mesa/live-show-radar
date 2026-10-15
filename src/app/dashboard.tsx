@@ -297,21 +297,23 @@ function Ticket({ e, i, reload, notify, booking }: { e: Any; i: number; reload: 
         <p className="mt-1 line-clamp-1 text-[12px] font-light text-[#111111]/60">📍 {e.venue ?? 'Venue TBA'}{e.city ? ` · ${e.city}` : ''}</p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {e.price_min && <span className="font-display text-lg">₹{Number(e.price_min).toLocaleString('en-IN')}<span className="text-xs font-sans text-[#111111]/60"> onwards</span></span>}
-          {(e.booking_url || e.official_url) && <a href={e.booking_url ?? e.official_url} target="_blank" rel="noopener noreferrer" className="tbtn border-transparent bg-[#111111] text-[#f4efe6]!">{e.booking_url ? 'Book now ↗' : 'Read more ↗'}</a>}
+          {(() => {
+            // Prefer the booking page, then the show's own page; if neither exists, send people to the listing page it was found on.
+            const href = e.booking_url ?? e.official_url ?? e.listing_url;
+            if (!href) return null;
+            const label = e.booking_url ? 'Book now ↗' : e.official_url ? 'Read more ↗' : 'See listing ↗';
+            return <a href={href} target="_blank" rel="noopener noreferrer" className="tbtn border-transparent bg-[#111111] text-[#f4efe6]!">{label}</a>;
+          })()}
+          {e.listing_url && e.listing_url !== (e.booking_url ?? e.official_url) && <a href={e.listing_url} target="_blank" rel="noopener noreferrer" className="tbtn">All listings ↗</a>}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t-2 border-dashed border-[#111111]/10 pt-3">
-          {booking ? (
-            e.calendar_status === 'created'
-              ? <span className="tbtn border-[#8fb39b] bg-[#8fb39b]/20">📅 In Google Calendar</span>
-              : <button className="tbtn" disabled={!!busy} onClick={() => going(e.confirmation)}>{busy ? '…' : '📅 Add to Google Calendar'}</button>
-          ) : (<>
+          {!booking && <>
             <button className={`tbtn ${e.interest === 'interested' ? 'border-[#c9a96e] bg-[#c9a96e]' : ''}`} disabled={!!busy} onClick={() => interest('interested')}>👍 Interested</button>
-            <button className={`tbtn ${e.interest === 'not_interested' ? 'border-[#a8865a] bg-[#a8865a]/20' : ''}`} disabled={!!busy} onClick={() => interest('not_interested')}>👎 Not for me</button>
-            {!e.confirmation && <>
-              <button className="tbtn border-[#5a5a5a]/50" disabled={!!busy || !e.start_at} onClick={() => going('booked')}>{busy === 'booked' ? '…' : '✅ I booked'}</button>
-              <button className="tbtn border-[#5a5a5a]/50" disabled={!!busy || !e.start_at} onClick={() => going('attending')}>{busy === 'attending' ? '…' : '🙌 I’m going'}</button>
-            </>}
-          </>)}
+            <button className={`tbtn ${e.interest === 'not_interested' ? 'border-[#a8865a] bg-[#a8865a]/20' : ''}`} disabled={!!busy} onClick={() => interest('not_interested')}>👎 Not interested</button>
+          </>}
+          {e.calendar_status === 'created'
+            ? <span className="tbtn border-[#8fb39b] bg-[#8fb39b]/20">📅 In calendar</span>
+            : <button className="tbtn border-[#5a5a5a]/50" disabled={!!busy || !e.start_at} title={e.start_at ? 'Adds it to My Bookings and Google Calendar' : 'No date announced yet'} onClick={() => going(e.confirmation ?? 'attending')}>{busy === 'attending' || busy === 'booked' ? '…' : '📅 Add to calendar'}</button>}
           <span className="barcode ml-auto hidden sm:block" />
         </div>
       </div>
@@ -357,7 +359,7 @@ function Settings({ notify, reloadEvents }: { notify: (m: string, ok?: boolean) 
       <section className="glass flex flex-wrap items-center justify-between gap-4 p-6">
         <div>
           <h1 className="font-display text-3xl">Settings</h1>
-          <p className="text-muted">Last checked for new shows {ago(s?.runs?.[0]?.started_at)} · we look every 30 minutes · Telegram digest at 9 am and 6 pm</p>
+          <p className="text-muted">Last checked for new shows {ago(s?.runs?.[0]?.started_at)} · we look every 30 minutes · new shows on Telegram instantly · favourites reminder at 9 am and 6 pm</p>
         </div>
         <button className="btn-sun" disabled={scanning} onClick={scan}>{scanning ? '🔭 Scanning…' : '🔭 Check for new shows now'}</button>
       </section>

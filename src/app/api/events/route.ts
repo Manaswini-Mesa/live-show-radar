@@ -10,7 +10,8 @@ export async function GET(req: NextRequest) {
       coalesce((select json_agg(json_build_object('id', a.id, 'name', a.name, 'reason', ea.match_reason)) from radar.event_artists ea join radar.artists a on a.id = ea.artist_id where ea.event_id = e.id), '[]') as artists,
       (select count(*) from radar.event_evidence ev where ev.event_id = e.id)::int as evidence_count,
       (select count(*) from radar.event_changes c where c.event_id = e.id and c.change_kind <> 'new_event')::int as change_count,
-      cl.status as calendar_status, cl.confirmation, cl.google_event_url
+      cl.status as calendar_status, cl.confirmation, cl.google_event_url,
+      (select ev.source_url from radar.event_evidence ev where ev.event_id = e.id order by ev.first_seen_at limit 1) as listing_url
     from radar.events e left join radar.calendar_links cl on cl.event_id = e.id
     where ${includePast} or e.start_at is null or e.start_at >= now() - interval '1 day'
     order by e.start_at asc nulls last limit 500`;
