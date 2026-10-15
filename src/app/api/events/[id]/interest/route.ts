@@ -10,9 +10,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const deny = requireSession(req); if (deny) return deny;
   const id = z.string().uuid().safeParse((await ctx.params).id); if (!id.success) return jsonError(400, 'Invalid id');
   const b = Body.safeParse(await req.json().catch(() => null)); if (!b.success) return jsonError(400, 'Invalid body');
-  const [ev] = await db()`update radar.events set interest = ${b.data.interest}, interest_at = ${b.data.interest ? new Date() : null} where id = ${id.data} returning id`;
+  const [ev] = await db()`update radar.events set interest = ${b.data.interest}, interest_at = ${b.data.interest ? new Date() : null}, notify_me = case when ${b.data.interest} = 'not_interested' then false else notify_me end where id = ${id.data} returning id`;
   if (!ev) return jsonError(404, 'Event not found');
-  if (b.data.interest) await db()`update radar.alerts set status = 'suppressed', last_error = ${`User marked ${b.data.interest}`} where event_id = ${id.data} and kind = 'tickets_live' and status in ('pending','failed')`;
+  if (b.data.interest) await db()`update radar.alerts set status = 'suppressed', last_error = ${`User marked ${b.data.interest}`} where event_id = ${id.data} and status in ('pending','failed') and (kind = 'tickets_live' or ${b.data.interest} = 'not_interested')`;
   await audit('interest_set', { event_id: id.data, interest: b.data.interest, via: 'dashboard' });
   return NextResponse.json({ ok: true });
 }
