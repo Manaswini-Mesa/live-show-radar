@@ -40,7 +40,7 @@ export default function Dashboard() {
     return () => clearInterval(t);
   }, [load, loadArtists, notify]);
 
-  const bookings = (events ?? []).filter(e => e.confirmation);
+  const bookings = (events ?? []).filter(e => e.interest === 'interested' || e.confirmation); // My Bookings = shows you're interested in
   const favIds = new Set((artists ?? []).filter(a => a.priority).map(a => a.id));
   const reloadAll = () => { load(); loadArtists(); };
   const tabs: [View, string][] = [['mine', 'My Artists'], ['all', 'All Artists'], ['bookings', `My Bookings${bookings.length ? ` · ${bookings.length}` : ''}`]];
@@ -264,6 +264,12 @@ function Ticket({ e, i, reload, notify, booking }: { e: Any; i: number; reload: 
     try { await api(`/api/events/${e.id}/interest`, { method: 'POST', body: JSON.stringify({ interest: e.interest === v ? null : v }) }); reload(); } catch (err: Any) { notify(err.message, false); }
     setBusy('');
   }
+  async function toggleNotify() {
+    setBusy('notify');
+    try { await api(`/api/events/${e.id}/notify`, { method: 'POST', body: JSON.stringify({ on: !e.notify_me }) }); notify(e.notify_me ? 'Notifications off for this show' : '🔔 We’ll message you on Telegram when the date or tickets are announced'); reload(); }
+    catch (err: Any) { notify(err.message, false); }
+    setBusy('');
+  }
   async function going(c: 'booked' | 'attending') {
     setBusy(c);
     try {
@@ -307,13 +313,12 @@ function Ticket({ e, i, reload, notify, booking }: { e: Any; i: number; reload: 
           {e.listing_url && e.listing_url !== (e.booking_url ?? e.official_url) && <a href={e.listing_url} target="_blank" rel="noopener noreferrer" className="tbtn">All listings ↗</a>}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t-2 border-dashed border-[#111111]/10 pt-3">
-          {!booking && <>
-            <button className={`tbtn ${e.interest === 'interested' ? 'border-[#c9a96e] bg-[#c9a96e]' : ''}`} disabled={!!busy} onClick={() => interest('interested')}>👍 Interested</button>
-            <button className={`tbtn ${e.interest === 'not_interested' ? 'border-[#a8865a] bg-[#a8865a]/20' : ''}`} disabled={!!busy} onClick={() => interest('not_interested')}>👎 Not interested</button>
-          </>}
-          {e.calendar_status === 'created'
-            ? <span className="tbtn border-[#8fb39b] bg-[#8fb39b]/20">📅 In calendar</span>
-            : <button className="tbtn border-[#5a5a5a]/50" disabled={!!busy || !e.start_at} title={e.start_at ? 'Adds it to My Bookings and Google Calendar' : 'No date announced yet'} onClick={() => going(e.confirmation ?? 'attending')}>{busy === 'attending' || busy === 'booked' ? '…' : '📅 Add to calendar'}</button>}
+          <button className={`tbtn ${e.interest === 'interested' ? 'border-[#c9a96e] bg-[#c9a96e]' : ''}`} disabled={!!busy} onClick={() => interest('interested')}>👍 Interested</button>
+          <button className={`tbtn ${e.interest === 'not_interested' ? 'border-[#a8865a] bg-[#a8865a]/20' : ''}`} disabled={!!busy} onClick={() => interest('not_interested')}>👎 Not interested</button>
+          {!e.start_at && (
+            <button onClick={toggleNotify} disabled={!!busy} aria-pressed={!!e.notify_me} title={e.notify_me ? 'You’ll get a Telegram message when the date or tickets are announced - tap to stop' : 'Notify me on Telegram when the date or tickets are announced'}
+              className={`tbtn ${e.notify_me ? 'border-[#c9a96e] bg-[#c9a96e]/25' : ''}`}>{e.notify_me ? '🔔 Notifying' : '🔕 Notify me'}</button>
+          )}
           <span className="barcode ml-auto hidden sm:block" />
         </div>
       </div>
@@ -327,11 +332,11 @@ function Bookings({ events, loaded, reload, notify, goUpcoming }: { events: Any[
     <div className="space-y-6">
       <section className="glass p-6 sm:p-8">
         <p className="text-[11px] uppercase tracking-[.25em] text-accent">My bookings</p>
-        <h1 className="font-display mt-1 text-2xl sm:text-3xl">{events.length ? <>You’ve got <span className="rainbow-text">{events.length} night{events.length > 1 ? 's' : ''} out</span></> : <>No plans <span className="rainbow-text">yet</span></>}</h1>
-        <p className="mt-2 text-muted">Shows you’ve booked or said you’re going to. We add them to your Google Calendar - never without your say-so.</p>
+        <h1 className="font-display mt-1 text-2xl sm:text-3xl">{events.length ? <><span className="rainbow-text">{events.length} show{events.length > 1 ? 's' : ''}</span> you’re interested in</> : <>No plans <span className="rainbow-text">yet</span></>}</h1>
+        <p className="mt-2 text-muted">Shows you marked 👍 Interested.</p>
       </section>
       {events.length === 0
-        ? <div className="glass p-10 text-center"><p className="mt-3 text-muted">Tap “I booked” or “I’m going” on any upcoming show.</p><button className="btn-sun mt-4" onClick={goUpcoming}>See upcoming concerts</button></div>
+        ? <div className="glass p-10 text-center"><p className="mt-3 text-muted">Tap 👍 Interested on any upcoming show and it lands here.</p><button className="btn-sun mt-4" onClick={goUpcoming}>See upcoming concerts</button></div>
         : <div className="grid gap-5 md:grid-cols-2">{events.map((e, i) => <Ticket key={e.id} e={e} i={i} reload={reload} notify={notify} booking />)}</div>}
     </div>
   );

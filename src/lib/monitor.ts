@@ -86,10 +86,21 @@ async function persist(sourceId: string, ev: NormalizedEvent, artists: WatchArti
       //   1. new_show      - first time a show is announced
       //   2. tickets_live  - tickets go on sale AND the user hasn't answered Interested / Not interested
       // Every other change is recorded in history but never notified.
-      const alertable = ev.verification === 'verified_structured' || ev.confidence >= 0.7;
-      if (!alertable) return;
       const [e] = await tx`select * from radar.events where id = ${eventId}`;
       const base = { artist: artist.name, title: e.title, city: e.city, venue: e.venue, startAt: e.start_at, timeKnown: e.time_known, ticketStatus: e.ticket_status, earlyBird: e.early_bird, lastVerified: e.last_verified_at, source: SOURCE_NAMES[sourceId] ?? sourceId, link: e.booking_url ?? e.official_url, reason };
+      //   3. notify_me     - user tapped "Notify me" on a TBA show and its date or tickets are now announced (once)
+      if (existing?.notify_me && e.interest !== 'not_interested') {
+        const gotDate = !existing.start_at && !!e.start_at;
+        const gotTickets = existing.ticket_status !== 'on_sale' && e.ticket_status === 'on_sale';
+        if (gotDate || gotTickets) {
+          await tx`insert into radar.alerts (event_id, kind, idempotency_key, message) values (${eventId}, 'notify_me', ${`notify:${eventId}`},
+            ${formatAlert({ ...base, kind: gotTickets ? 'tickets_live' : 'update', reason: `You asked to be notified - ${gotDate ? 'the date is now announced' : 'tickets are now on sale'}` })}) on conflict (idempotency_key) do nothing`;
+          await tx`update radar.events set notify_me = false where id = ${eventId}`;
+          return;
+        }
+      }
+      const alertable = ev.verification === 'verified_structured' || ev.confidence >= 0.7;
+      if (!alertable) return;
       if (!existing) {
         await tx`insert into radar.alerts (event_id, kind, idempotency_key, message) values (${eventId}, 'new_show', ${`new:${eventId}`}, ${formatAlert({ ...base, kind: 'new_show' })}) on conflict (idempotency_key) do nothing`;
       } else if (!e.interest && changes.some(c => c.field === 'ticket_status' && c.newValue === 'on_sale')) {
